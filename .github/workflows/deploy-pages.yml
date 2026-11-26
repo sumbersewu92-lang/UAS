@@ -25,16 +25,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
 
       - name: Instal dependensi
-        run: npm ci
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Build aplikasi Vite
         run: npm run build
 
       - name: Siapkan fallback SPA 404.html
         run: cp dist/index.html dist/404.html
+
+      - name: Siapkan GitHub Pages
+        uses: actions/configure-pages@v5
 
       - name: Unggah artefak Pages
         uses: actions/upload-pages-artifact@v3
