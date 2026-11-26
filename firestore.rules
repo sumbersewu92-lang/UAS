@@ -260,36 +260,12 @@ service cloud.firestore {
         );
         allow list: if isTeacher() || (isStudentAuth() && existing().student_uid == request.auth.uid);
 
-        allow create: if isValidId(sessionId) && isValidSession(incoming()) && (
-          (isTeacher()
-            && incoming().exam_id == examId
-            && incoming().nis == sessionId
-            && incoming().created_at == request.time
-            && incoming().updated_at == request.time
-            && exists(/databases/$(database)/documents/exams/$(examId))) ||
-          (isStudentAuth()
-            && incoming().exam_id == examId
-            && incoming().nis == sessionId
-            && incoming().student_uid == request.auth.uid
-            && incoming().device_id is string
-            && incoming().status == 'MENGERJAKAN'
-            && incoming().question_order.size() >= 1
-            && incoming().violation_count == 0
-            && incoming().correct_count == 0
-            && incoming().wrong_count == 0
-            && incoming().unanswered_count == 0
-            && incoming().score == 0
-            && incoming().max_score == 0
-            && incoming().final_grade == 0
-            && incoming().graded == false
-            && incoming().started_at == request.time
-            && incoming().ends_at is timestamp
-            && incoming().ends_at > request.time
-            && incoming().last_heartbeat_at == request.time
-            && incoming().created_at == request.time
-            && incoming().updated_at == request.time
-            && get(/databases/$(database)/documents/exams/$(examId)).data.is_active == true)
-        );
+        allow create: if isTeacher() && isValidId(sessionId) && isValidSession(incoming())
+          && incoming().exam_id == examId
+          && incoming().nis == sessionId
+          && incoming().created_at == request.time
+          && incoming().updated_at == request.time
+          && exists(/databases/$(database)/documents/exams/$(examId));
 
         allow update: if isValidId(sessionId) && isValidSession(incoming()) && (
           (isTeacher()
@@ -322,10 +298,10 @@ service cloud.firestore {
                 && incoming().ends_at is timestamp
                 && incoming().ends_at > request.time
                 && incoming().last_heartbeat_at == request.time
+                && get(/databases/$(database)/documents/exams/$(examId)).data.is_active == true
                 && incoming().diff(existing()).affectedKeys().hasOnly([
-                  'student_name', 'student_class', 'student_uid', 'device_id',
-                  'status', 'question_order', 'option_order', 'started_at',
-                  'ends_at', 'last_heartbeat_at', 'updated_at'
+                  'student_uid', 'device_id', 'status', 'question_order',
+                  'option_order', 'started_at', 'ends_at', 'last_heartbeat_at', 'updated_at'
                 ])) ||
               // Action 2: Resume on same/reset device while active or locked
               (existing().status in ['MENGERJAKAN', 'TERKUNCI']

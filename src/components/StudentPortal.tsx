@@ -151,8 +151,8 @@ export function StudentPortal({
 
   function fillSampleStudent() {
     setToken('PASMTK26');
-    setNis('20260104');
-    setStudentName((prev) => prev || 'Siti Aminah');
+    setNis('20260103');
+    setStudentName('Bagas Pratama');
     setStudentClass('XI IPA 1');
     setErrorMsg(null);
     setCompletedSummary(null);
@@ -168,7 +168,7 @@ export function StudentPortal({
               Masuk Ruang Ujian Semester
             </h1>
             <p className="text-sm text-slate-600 mt-1.5">
-              Masukkan identitas sesuai kartu peserta dan token aktif dari guru pengawas.
+              Masukkan token aktif dan Nomor Ujian / NIS yang sudah didaftarkan oleh guru pengawas.
             </p>
           </div>
 
@@ -236,7 +236,7 @@ export function StudentPortal({
                   autoComplete="off"
                   value={nis}
                   onChange={(e) => setNis(e.target.value)}
-                  placeholder="Contoh: 20260104"
+                  placeholder="Contoh: 20260103"
                   className="w-full min-h-[46px] px-3.5 py-2.5 text-base font-mono bg-white border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700"
                 />
               </div>

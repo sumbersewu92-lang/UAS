@@ -1,6 +1,7 @@
 import type { User } from 'firebase/auth';
 import {
   AlertCircle,
+  BellRing,
   CheckCircle2,
   Clock,
   Edit3,
@@ -16,9 +17,11 @@ import {
   Trash2,
   Unlock,
   Upload,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type {
   MonitorParticipant,
   OptionKey,
@@ -53,6 +56,45 @@ interface TeacherDashboardProps {
 }
 
 type TeacherTab = 'exams' | 'questions' | 'monitor';
+
+interface LockedAlertItem {
+  participantId: string;
+  nis: string;
+  studentName: string;
+  studentClass: string;
+  violationCount: number;
+  detectedAt: string;
+}
+
+function playLockedAlertSound() {
+  try {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const playTone = (freq: number, startOffset: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startOffset);
+      gain.gain.setValueAtTime(0.001, ctx.currentTime + startOffset);
+      gain.gain.exponentialRampToValueAtTime(0.14, ctx.currentTime + startOffset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startOffset + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + startOffset);
+      osc.stop(ctx.currentTime + startOffset + duration + 0.02);
+    };
+    playTone(740, 0, 0.14);
+    playTone(987.77, 0.16, 0.22);
+    window.setTimeout(() => {
+      void ctx.close().catch(() => undefined);
+    }, 700);
+  } catch {
+    // Ignore audio errors when autoplay is blocked
+  }
+}
 
 function formatRemaining(seconds: number | null): string {
   if (seconds === null) return '-';
@@ -147,6 +189,14 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
   const [newParticipant, setNewParticipant] = useState({ nis: '', student_name: '', student_class: '' });
   const [exportingCsv, setExportingCsv] = useState(false);
 
+  // Real-time locked alerts
+  const [lockedAlerts, setLockedAlerts] = useState<LockedAlertItem[]>([]);
+  const [alertSoundEnabled, setAlertSoundEnabled] = useState(true);
+  const alertSoundEnabledRef = useRef(alertSoundEnabled);
+  alertSoundEnabledRef.current = alertSoundEnabled;
+  const prevStatusMapRef = useRef<Map<string, SessionStatus> | null>(null);
+  const prevExamIdRef = useRef<string | null>(null);
+
   const fetchExams = useCallback(async () => {
     setLoadingExams(true);
     try {
@@ -189,17 +239,69 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
     if (!authReady || !authUser || !selectedExam) return;
     if (activeTab === 'questions') {
       void fetchQuestions(selectedExam.id);
-      return;
-    }
-    if (activeTab === 'monitor') {
-      setLoadingMonitor(true);
-      const unsub = subscribeExamMonitor(selectedExam.id, selectedExam.question_count, (rows) => {
-        setParticipants(rows);
-        setLoadingMonitor(false);
-      });
-      return () => unsub();
     }
   }, [authReady, authUser, selectedExam, activeTab, fetchQuestions]);
+
+  // Keep real-time monitor active across tabs for the selected exam so locked alerts fire immediately
+  useEffect(() => {
+    if (!authReady || !authUser || !selectedExam) return;
+
+    if (prevExamIdRef.current !== selectedExam.id) {
+      prevExamIdRef.current = selectedExam.id;
+      prevStatusMapRef.current = null;
+      setLockedAlerts([]);
+    }
+
+    setLoadingMonitor(true);
+    const unsub = subscribeExamMonitor(selectedExam.id, selectedExam.question_count, (rows) => {
+      const nextStatusMap = new Map<string, SessionStatus>();
+      rows.forEach((r) => nextStatusMap.set(r.id, r.status));
+
+      if (prevStatusMapRef.current === null) {
+        prevStatusMapRef.current = nextStatusMap;
+      } else {
+        const prevMap = prevStatusMapRef.current;
+        const newlyLocked: LockedAlertItem[] = [];
+
+        for (const r of rows) {
+          const prevStatus = prevMap.get(r.id);
+          if (r.status === 'TERKUNCI' && prevStatus !== 'TERKUNCI') {
+            newlyLocked.push({
+              participantId: r.id,
+              nis: r.nis,
+              studentName: r.student_name,
+              studentClass: r.student_class,
+              violationCount: r.violation_count,
+              detectedAt: new Date().toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              }),
+            });
+          }
+        }
+
+        prevStatusMapRef.current = nextStatusMap;
+
+        setLockedAlerts((prev) => {
+          const stillLocked = prev.filter((a) => nextStatusMap.get(a.participantId) === 'TERKUNCI');
+          if (newlyLocked.length === 0) return stillLocked;
+          const deduped = new Map<string, LockedAlertItem>(stillLocked.map((a) => [a.participantId, a]));
+          newlyLocked.forEach((a) => deduped.set(a.participantId, a));
+          return Array.from(deduped.values());
+        });
+
+        if (newlyLocked.length > 0 && alertSoundEnabledRef.current) {
+          playLockedAlertSound();
+        }
+      }
+
+      setParticipants(rows);
+      setLoadingMonitor(false);
+    });
+
+    return () => unsub();
+  }, [authReady, authUser, selectedExam?.id, selectedExam?.question_count]);
 
   const filteredParticipants = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -393,10 +495,14 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
     }
   }
 
-  async function handleUnlockSession(sessionId: string) {
+  async function handleUnlockSession(sessionId: string, studentName?: string) {
     if (!selectedExam) return;
     try {
       await unlockStudentSession(selectedExam.id, sessionId);
+      setLockedAlerts((prev) => prev.filter((a) => a.participantId !== sessionId));
+      if (studentName) {
+        setBannerSuccess(`Kunci layar ${studentName} berhasil dibuka. Siswa dapat melanjutkan ujian.`);
+      }
       await fetchExams();
     } catch (err) {
       setBannerError(err instanceof Error ? err.message : 'Gagal membuka kunci sesi.');
@@ -476,13 +582,18 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
           <button
             type="button"
             onClick={() => setActiveTab('monitor')}
-            className={`px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 ${
               activeTab === 'monitor'
                 ? 'bg-white text-slate-900 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Pantauan &amp; Rekap
+            <span>Pantauan &amp; Rekap</span>
+            {monitorStats.locked > 0 && (
+              <span className="px-1.5 py-0.5 rounded-md bg-red-600 text-white text-[11px] font-mono tabular-nums leading-none">
+                {monitorStats.locked}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -1062,6 +1173,20 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => setAlertSoundEnabled((v) => !v)}
+                  title={alertSoundEnabled ? 'Matikan suara notifikasi siswa terkunci' : 'Aktifkan suara notifikasi siswa terkunci'}
+                  className={`min-h-[40px] px-3 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 ${
+                    alertSoundEnabled
+                      ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                      : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {alertSoundEnabled ? <Volume2 className="w-3.5 h-3.5 text-blue-700" /> : <VolumeX className="w-3.5 h-3.5" />}
+                  <span>{alertSoundEnabled ? 'Suara Alert: ON' : 'Suara Alert: OFF'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => void fetchExams()}
                   className="min-h-[40px] px-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs font-semibold inline-flex items-center gap-1.5"
                 >
@@ -1600,6 +1725,96 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
       )}
 
       <QrModal exam={qrExam} onClose={() => setQrExam(null)} />
+
+      {/* Real-time Floating Locked Student Alerts */}
+      {lockedAlerts.length > 0 && (
+        <aside
+          aria-live="assertive"
+          aria-label="Notifikasi siswa terkunci"
+          className="fixed bottom-4 right-4 left-4 sm:left-auto sm:w-[390px] z-40 space-y-2.5"
+        >
+          {lockedAlerts.length > 1 && (
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs shadow-lg">
+              <span className="font-semibold">{lockedAlerts.length} siswa baru saja terkunci</span>
+              <button
+                type="button"
+                onClick={() => setLockedAlerts([])}
+                className="text-slate-300 hover:text-white underline underline-offset-2"
+              >
+                Tutup Semua
+              </button>
+            </div>
+          )}
+
+          {lockedAlerts.slice(0, 3).map((alert) => {
+            const matchedParticipant = participants.find((p) => p.id === alert.participantId);
+            return (
+              <div
+                key={alert.participantId}
+                role="alert"
+                className="bg-white border-2 border-red-400 rounded-2xl p-4 shadow-xl space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+                      <BellRing className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-red-700">Layar Siswa Terkunci</span>
+                        <span className="text-[11px] font-mono text-slate-400 tabular-nums">{alert.detectedAt}</span>
+                      </div>
+                      <p className="text-sm font-bold text-slate-900 truncate mt-0.5">{alert.studentName}</p>
+                      <p className="text-xs text-slate-600 font-mono">
+                        NIS {alert.nis} · {alert.studentClass}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLockedAlerts((prev) => prev.filter((a) => a.participantId !== alert.participantId))
+                    }
+                    aria-label={`Tutup notifikasi ${alert.studentName}`}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 shrink-0"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-red-800 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
+                  Pelanggaran layar mencapai <strong className="font-mono">{alert.violationCount}x</strong>. Menunggu
+                  pembukaan kunci oleh pengawas.
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleUnlockSession(alert.participantId, alert.studentName)}
+                    className="flex-1 min-h-[38px] px-3 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5"
+                  >
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>Buka Kunci</span>
+                  </button>
+                  {matchedParticipant && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('monitor');
+                        void openViolationDrawer(matchedParticipant);
+                      }}
+                      className="min-h-[38px] px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 inline-flex items-center gap-1.5"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      <span>Lihat Log</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </aside>
+      )}
     </main>
   );
 }

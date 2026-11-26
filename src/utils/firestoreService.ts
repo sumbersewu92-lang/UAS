@@ -564,40 +564,9 @@ export async function joinExamSession(params: {
   const serverNowMs = await getAccurateNowMs();
 
   if (!existingSnap.exists()) {
-    const { questionOrder, optionOrder } = buildOrderAndOptions();
-    const endsAtTs = Timestamp.fromMillis(serverNowMs + durationMinutes * 60_000);
-    try {
-      await setDoc(sessionRef, {
-        exam_id: examId,
-        nis,
-        student_name: studentName,
-        student_class: studentClass,
-        student_uid: user.uid,
-        device_id: deviceId,
-        status: 'MENGERJAKAN',
-        question_order: questionOrder,
-        option_order: optionOrder,
-        answers: {},
-        violation_count: 0,
-        started_at: serverTimestamp(),
-        ends_at: endsAtTs,
-        submitted_at: null,
-        last_heartbeat_at: serverTimestamp(),
-        correct_count: 0,
-        wrong_count: 0,
-        unanswered_count: 0,
-        score: 0,
-        max_score: 0,
-        final_grade: 0,
-        graded: false,
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp(),
-      });
-      const readBack = await getDoc(sessionRef);
-      finalSessionData = readBack.data() || {};
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, sessionPath);
-    }
+    return {
+      error: `Nomor Ujian / NIS ${nis} tidak terdaftar pada paket ujian ini. Periksa kembali kartu peserta atau hubungi guru/pengawas untuk mendaftarkan NIS Anda.`,
+    };
   } else {
     const cur = existingSnap.data();
     const curStatus = cur.status as SessionStatus;
@@ -630,8 +599,6 @@ export async function joinExamSession(params: {
       const endsAtTs = Timestamp.fromMillis(serverNowMs + durationMinutes * 60_000);
       try {
         await updateDoc(sessionRef, {
-          student_name: studentName,
-          student_class: studentClass,
           student_uid: user.uid,
           device_id: deviceId,
           status: 'MENGERJAKAN',

@@ -37,12 +37,14 @@ export function GuideModal({ open, onClose }: GuideModalProps) {
             </h3>
             <ul className="list-disc pl-5 space-y-1.5">
               <li>
-                Buka tab <strong>Portal Siswa</strong>, lalu masukkan token contoh{' '}
+                Buka tab <strong>Portal Siswa</strong>, lalu masukkan token{' '}
                 <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">PASMTK26</code>{' '}
-                (Matematika) atau{' '}
-                <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">PASBIN26</code>{' '}
-                (Bahasa Indonesia), serta NIS, Kelas, dan Nama Lengkap — atau cukup klik tombol{' '}
-                <strong>Isi Data Contoh</strong> lalu tekan <strong>Mulai / Lanjutkan Ujian</strong>.
+                beserta NIS peserta yang sudah terdaftar (contoh:{' '}
+                <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">20260103</code> — Bagas
+                Pratama), atau cukup klik <strong>Isi Data Contoh</strong> lalu tekan{' '}
+                <strong>Mulai / Lanjutkan Ujian</strong>. Untuk paket{' '}
+                <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">PASBIN26</code>,
+                tambahkan/impor peserta terlebih dahulu di Dashboard Guru.
               </li>
               <li>
                 <strong>Auto-Save Ganda (HP + Cloud):</strong> Setiap memilih jawaban, data langsung tersimpan ke{' '}
