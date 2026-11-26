@@ -1,0 +1,416 @@
+{
+  "entities": {
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Authorized teacher or proctor account granted dashboard access.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 120
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "addedBy": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "name", "addedBy", "createdAt"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Semester exam package metadata and configuration.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "class_level": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "duration_minutes": {
+          "type": "number"
+        },
+        "max_warnings": {
+          "type": "number"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 16,
+          "pattern": "^[A-Z0-9]+$"
+        },
+        "is_active": {
+          "type": "boolean"
+        },
+        "shuffle_questions": {
+          "type": "boolean"
+        },
+        "shuffle_options": {
+          "type": "boolean"
+        },
+        "question_count": {
+          "type": "number"
+        },
+        "owner_uid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "title",
+        "subject",
+        "class_level",
+        "duration_minutes",
+        "max_warnings",
+        "token",
+        "is_active",
+        "shuffle_questions",
+        "shuffle_options",
+        "question_count",
+        "owner_uid",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "ExamTokenLookup": {
+      "title": "ExamTokenLookup",
+      "description": "Publicly queryable token pointer enabling single-document exam lookup by active token.",
+      "type": "object",
+      "properties": {
+        "exam_id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "class_level": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "duration_minutes": {
+          "type": "number"
+        },
+        "max_warnings": {
+          "type": "number"
+        },
+        "is_active": {
+          "type": "boolean"
+        },
+        "question_count": {
+          "type": "number"
+        },
+        "owner_uid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "exam_id",
+        "title",
+        "subject",
+        "class_level",
+        "duration_minutes",
+        "max_warnings",
+        "is_active",
+        "question_count",
+        "owner_uid",
+        "updated_at"
+      ]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Student-safe multiple choice question without correct answer key.",
+      "type": "object",
+      "properties": {
+        "exam_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "exam_active": {
+          "type": "boolean"
+        },
+        "question_text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "option_a": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "option_b": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "option_c": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "option_d": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "points": {
+          "type": "number"
+        },
+        "image_data": {
+          "type": "string",
+          "maxLength": 350000
+        },
+        "order_index": {
+          "type": "number"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "exam_id",
+        "exam_active",
+        "question_text",
+        "option_a",
+        "option_b",
+        "option_c",
+        "option_d",
+        "points",
+        "order_index",
+        "created_at"
+      ]
+    },
+    "AnswerKey": {
+      "title": "AnswerKey",
+      "description": "Teacher-only correct option and point weight for automated grading.",
+      "type": "object",
+      "properties": {
+        "correct_option": {
+          "type": "string",
+          "enum": ["A", "B", "C", "D"]
+        },
+        "points": {
+          "type": "number"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["correct_option", "points", "updated_at"]
+    },
+    "StudentSession": {
+      "title": "StudentSession",
+      "description": "Student exam attempt, shuffled layout, answers map, lock state, and graded scores.",
+      "type": "object",
+      "properties": {
+        "exam_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "nis": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "pattern": "^[A-Z0-9_\\-]+$"
+        },
+        "student_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "student_class": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "student_uid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "device_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "status": {
+          "type": "string",
+          "enum": ["BELUM_MULAI", "MENGERJAKAN", "TERKUNCI", "SELESAI"]
+        },
+        "question_order": {
+          "type": "array"
+        },
+        "option_order": {
+          "type": "object"
+        },
+        "answers": {
+          "type": "object"
+        },
+        "violation_count": {
+          "type": "number"
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ends_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "submitted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_heartbeat_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "correct_count": {
+          "type": "number"
+        },
+        "wrong_count": {
+          "type": "number"
+        },
+        "unanswered_count": {
+          "type": "number"
+        },
+        "score": {
+          "type": "number"
+        },
+        "max_score": {
+          "type": "number"
+        },
+        "final_grade": {
+          "type": "number"
+        },
+        "graded": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "exam_id",
+        "nis",
+        "student_name",
+        "student_class",
+        "status",
+        "question_order",
+        "option_order",
+        "answers",
+        "violation_count",
+        "correct_count",
+        "wrong_count",
+        "unanswered_count",
+        "score",
+        "max_score",
+        "final_grade",
+        "graded",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "ViolationLog": {
+      "title": "ViolationLog",
+      "description": "Immutable audit entry for student screen violations or teacher unlock events.",
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "student_uid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "violation_type": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["session_id", "student_uid", "violation_type", "detail", "created_at"]
+    }
+  },
+  "firestore": {
+    "/teachers/{teacherUid}": {
+      "schema": { "$ref": "#/entities/Teacher" },
+      "description": "Authorized teacher accounts allowed to manage exams and monitor students."
+    },
+    "/exam_tokens/{token}": {
+      "schema": { "$ref": "#/entities/ExamTokenLookup" },
+      "description": "Token-keyed pointer documents for single-document exam lookup by students."
+    },
+    "/exams/{examId}": {
+      "schema": { "$ref": "#/entities/Exam" },
+      "description": "Exam packages managed by teachers."
+    },
+    "/exams/{examId}/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/Question" },
+      "description": "Student-readable question prompts and options (no answer keys)."
+    },
+    "/exams/{examId}/answer_keys/{questionId}": {
+      "schema": { "$ref": "#/entities/AnswerKey" },
+      "description": "Teacher-only correct options and point weights."
+    },
+    "/exams/{examId}/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/StudentSession" },
+      "description": "Student exam sessions keyed by normalized NIS."
+    },
+    "/exams/{examId}/sessions/{sessionId}/violations/{violationId}": {
+      "schema": { "$ref": "#/entities/ViolationLog" },
+      "description": "Screen violation and teacher unlock logs per student session."
+    }
+  }
+}

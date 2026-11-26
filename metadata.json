@@ -1,0 +1,6 @@
+{
+  "name": "UjianKu — Portal Ujian Semester",
+  "description": "Aplikasi ujian semester berbasis web yang ringan untuk HP siswa dan dashboard guru dengan anti-curang, auto-save ganda, timer terpusat, dan rekap nilai.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

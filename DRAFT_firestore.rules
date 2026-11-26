@@ -1,0 +1,390 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isStudentAuth() {
+      return request.auth != null && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.firebase.sign_in_provider == 'anonymous'
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isTeacher() {
+      return isSignedIn() && (
+        request.auth.token.email == 'sumbersewu92@gmail.com' ||
+        exists(/databases/$(database)/documents/teachers/$(request.auth.uid))
+      );
+    }
+
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['email', 'name', 'addedBy', 'createdAt'])
+        && data.keys().hasOnly(['email', 'name', 'addedBy', 'createdAt'])
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 120
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.addedBy is string && data.addedBy.size() >= 1 && data.addedBy.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    function isValidExam(data) {
+      return data.keys().hasAll([
+          'title', 'subject', 'class_level', 'duration_minutes', 'max_warnings',
+          'token', 'is_active', 'shuffle_questions', 'shuffle_options',
+          'question_count', 'owner_uid', 'created_at', 'updated_at'
+        ])
+        && data.keys().hasOnly([
+          'title', 'subject', 'class_level', 'duration_minutes', 'max_warnings',
+          'token', 'is_active', 'shuffle_questions', 'shuffle_options',
+          'question_count', 'owner_uid', 'created_at', 'updated_at'
+        ])
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 160
+        && data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 100
+        && data.class_level is string && data.class_level.size() >= 1 && data.class_level.size() <= 60
+        && data.duration_minutes is number && data.duration_minutes >= 5 && data.duration_minutes <= 300
+        && data.max_warnings is number && data.max_warnings >= 0 && data.max_warnings <= 10
+        && data.token is string && data.token.size() >= 4 && data.token.size() <= 16 && data.token.matches('^[A-Z0-9]+$')
+        && data.is_active is bool
+        && data.shuffle_questions is bool
+        && data.shuffle_options is bool
+        && data.question_count is number && data.question_count >= 0 && data.question_count <= 500
+        && data.owner_uid is string && data.owner_uid.size() >= 1 && data.owner_uid.size() <= 128
+        && data.created_at is timestamp
+        && data.updated_at is timestamp;
+    }
+
+    function isValidExamTokenLookup(data) {
+      return data.keys().hasAll([
+          'exam_id', 'title', 'subject', 'class_level', 'duration_minutes',
+          'max_warnings', 'is_active', 'question_count', 'owner_uid', 'updated_at'
+        ])
+        && data.keys().hasOnly([
+          'exam_id', 'title', 'subject', 'class_level', 'duration_minutes',
+          'max_warnings', 'is_active', 'question_count', 'owner_uid', 'updated_at'
+        ])
+        && isValidId(data.exam_id)
+        && data.title is string && data.title.size() >= 2 && data.title.size() <= 160
+        && data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 100
+        && data.class_level is string && data.class_level.size() >= 1 && data.class_level.size() <= 60
+        && data.duration_minutes is number && data.duration_minutes >= 5 && data.duration_minutes <= 300
+        && data.max_warnings is number && data.max_warnings >= 0 && data.max_warnings <= 10
+        && data.is_active is bool
+        && data.question_count is number && data.question_count >= 0 && data.question_count <= 500
+        && data.owner_uid is string && data.owner_uid.size() >= 1 && data.owner_uid.size() <= 128
+        && data.updated_at is timestamp;
+    }
+
+    function isValidQuestion(data) {
+      return data.keys().hasAll([
+          'exam_id', 'exam_active', 'question_text', 'option_a', 'option_b',
+          'option_c', 'option_d', 'points', 'order_index', 'created_at'
+        ])
+        && data.keys().hasOnly([
+          'exam_id', 'exam_active', 'question_text', 'option_a', 'option_b',
+          'option_c', 'option_d', 'points', 'image_data', 'order_index', 'created_at'
+        ])
+        && isValidId(data.exam_id)
+        && data.exam_active is bool
+        && data.question_text is string && data.question_text.size() >= 1 && data.question_text.size() <= 4000
+        && data.option_a is string && data.option_a.size() >= 1 && data.option_a.size() <= 1000
+        && data.option_b is string && data.option_b.size() >= 1 && data.option_b.size() <= 1000
+        && data.option_c is string && data.option_c.size() >= 1 && data.option_c.size() <= 1000
+        && data.option_d is string && data.option_d.size() >= 1 && data.option_d.size() <= 1000
+        && data.points is number && data.points > 0 && data.points <= 1000
+        && (!('image_data' in data) || data.image_data == null || (data.image_data is string && data.image_data.size() <= 350000))
+        && data.order_index is number && data.order_index >= 0 && data.order_index <= 1000
+        && data.created_at is timestamp;
+    }
+
+    function isValidAnswerKey(data) {
+      return data.keys().hasAll(['correct_option', 'points', 'updated_at'])
+        && data.keys().hasOnly(['correct_option', 'points', 'updated_at'])
+        && data.correct_option in ['A', 'B', 'C', 'D']
+        && data.points is number && data.points > 0 && data.points <= 1000
+        && data.updated_at is timestamp;
+    }
+
+    function isValidSession(data) {
+      return data.keys().hasAll([
+          'exam_id', 'nis', 'student_name', 'student_class', 'status',
+          'question_order', 'option_order', 'answers', 'violation_count',
+          'correct_count', 'wrong_count', 'unanswered_count',
+          'score', 'max_score', 'final_grade', 'graded', 'created_at', 'updated_at'
+        ])
+        && data.keys().hasOnly([
+          'exam_id', 'nis', 'student_name', 'student_class', 'student_uid', 'device_id',
+          'status', 'question_order', 'option_order', 'answers', 'violation_count',
+          'started_at', 'ends_at', 'submitted_at', 'last_heartbeat_at',
+          'correct_count', 'wrong_count', 'unanswered_count',
+          'score', 'max_score', 'final_grade', 'graded', 'created_at', 'updated_at'
+        ])
+        && isValidId(data.exam_id)
+        && data.nis is string && data.nis.size() >= 1 && data.nis.size() <= 40 && data.nis.matches('^[A-Z0-9_\\-]+$')
+        && data.student_name is string && data.student_name.size() >= 1 && data.student_name.size() <= 100
+        && data.student_class is string && data.student_class.size() >= 1 && data.student_class.size() <= 40
+        && (!('student_uid' in data) || data.student_uid == null || (data.student_uid is string && data.student_uid.size() >= 1 && data.student_uid.size() <= 128))
+        && (!('device_id' in data) || data.device_id == null || (data.device_id is string && data.device_id.size() >= 1 && data.device_id.size() <= 128))
+        && data.status in ['BELUM_MULAI', 'MENGERJAKAN', 'TERKUNCI', 'SELESAI']
+        && data.question_order is list && data.question_order.size() <= 300
+        && (data.question_order.size() == 0 || data.question_order[0] is string)
+        && data.option_order is map && data.option_order.size() <= 300
+        && data.answers is map && data.answers.size() <= 300
+        && data.violation_count is int && data.violation_count >= 0 && data.violation_count <= 100
+        && (!('started_at' in data) || data.started_at == null || data.started_at is timestamp)
+        && (!('ends_at' in data) || data.ends_at == null || data.ends_at is timestamp)
+        && (!('submitted_at' in data) || data.submitted_at == null || data.submitted_at is timestamp)
+        && (!('last_heartbeat_at' in data) || data.last_heartbeat_at == null || data.last_heartbeat_at is timestamp)
+        && data.correct_count is int && data.correct_count >= 0 && data.correct_count <= 500
+        && data.wrong_count is int && data.wrong_count >= 0 && data.wrong_count <= 500
+        && data.unanswered_count is int && data.unanswered_count >= 0 && data.unanswered_count <= 500
+        && data.score is number && data.score >= 0
+        && data.max_score is number && data.max_score >= 0
+        && data.final_grade is number && data.final_grade >= 0 && data.final_grade <= 100
+        && data.graded is bool
+        && data.created_at is timestamp
+        && data.updated_at is timestamp;
+    }
+
+    function isValidViolationLog(data) {
+      return data.keys().hasAll(['session_id', 'student_uid', 'violation_type', 'detail', 'created_at'])
+        && data.keys().hasOnly(['session_id', 'student_uid', 'violation_type', 'detail', 'created_at'])
+        && isValidId(data.session_id)
+        && data.student_uid is string && data.student_uid.size() >= 1 && data.student_uid.size() <= 128
+        && data.violation_type is string && data.violation_type.size() >= 1 && data.violation_type.size() <= 50
+        && data.detail is string && data.detail.size() >= 1 && data.detail.size() <= 240
+        && data.created_at is timestamp;
+    }
+
+    match /test/connection {
+      allow get: if true;
+    }
+
+    match /teachers/{teacherUid} {
+      allow get: if isSignedIn() && (request.auth.uid == teacherUid || isTeacher());
+      allow list: if isTeacher();
+      allow create: if isTeacher() && isValidId(teacherUid) && isValidTeacher(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isTeacher() && isValidId(teacherUid) && isValidTeacher(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'name', 'addedBy']);
+      allow delete: if isTeacher() && isValidId(teacherUid);
+    }
+
+    match /exam_tokens/{token} {
+      allow get: if isStudentAuth() && isValidId(token);
+      allow list: if isTeacher();
+      allow create: if isTeacher() && isValidId(token) && isValidExamTokenLookup(incoming())
+        && incoming().owner_uid == request.auth.uid
+        && incoming().updated_at == request.time;
+      allow update: if isTeacher() && isValidId(token) && isValidExamTokenLookup(incoming())
+        && incoming().owner_uid == existing().owner_uid
+        && incoming().updated_at == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'exam_id', 'title', 'subject', 'class_level', 'duration_minutes',
+          'max_warnings', 'is_active', 'question_count', 'updated_at'
+        ]);
+      allow delete: if isTeacher() && isValidId(token);
+    }
+
+    match /exams/{examId} {
+      allow get: if isTeacher() || (isStudentAuth() && isValidId(examId) && (resource == null || existing().is_active == true));
+      allow list: if isTeacher();
+      allow create: if isTeacher() && isValidId(examId) && isValidExam(incoming())
+        && incoming().owner_uid == request.auth.uid
+        && incoming().created_at == request.time
+        && incoming().updated_at == request.time;
+      allow update: if isTeacher() && isValidId(examId) && isValidExam(incoming())
+        && incoming().owner_uid == existing().owner_uid
+        && incoming().created_at == existing().created_at
+        && incoming().updated_at == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'subject', 'class_level', 'duration_minutes', 'max_warnings',
+          'token', 'is_active', 'shuffle_questions', 'shuffle_options',
+          'question_count', 'updated_at'
+        ]);
+      allow delete: if isTeacher() && isValidId(examId);
+
+      match /questions/{questionId} {
+        allow get: if isTeacher() || (isStudentAuth() && isValidId(questionId) && (resource == null || existing().exam_active == true));
+        allow list: if isTeacher() || (isStudentAuth() && existing().exam_active == true);
+        allow create: if isTeacher() && isValidId(questionId) && isValidQuestion(incoming())
+          && incoming().exam_id == examId
+          && incoming().created_at == request.time
+          && exists(/databases/$(database)/documents/exams/$(examId));
+        allow update: if isTeacher() && isValidId(questionId) && isValidQuestion(incoming())
+          && incoming().exam_id == existing().exam_id
+          && incoming().created_at == existing().created_at
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'exam_active', 'question_text', 'option_a', 'option_b',
+            'option_c', 'option_d', 'points', 'image_data', 'order_index'
+          ]);
+        allow delete: if isTeacher() && isValidId(questionId);
+      }
+
+      match /answer_keys/{questionId} {
+        allow get, list: if isTeacher();
+        allow create: if isTeacher() && isValidId(questionId) && isValidAnswerKey(incoming())
+          && incoming().updated_at == request.time
+          && exists(/databases/$(database)/documents/exams/$(examId));
+        allow update: if isTeacher() && isValidId(questionId) && isValidAnswerKey(incoming())
+          && incoming().updated_at == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['correct_option', 'points', 'updated_at']);
+        allow delete: if isTeacher() && isValidId(questionId);
+      }
+
+      match /sessions/{sessionId} {
+        allow get: if isTeacher() || (
+          isStudentAuth() && isValidId(sessionId) && (
+            resource == null ||
+            existing().student_uid == request.auth.uid ||
+            (existing().student_uid == null && (existing().status == 'BELUM_MULAI' || existing().device_id == null))
+          )
+        );
+        allow list: if isTeacher() || (isStudentAuth() && existing().student_uid == request.auth.uid);
+
+        allow create: if isValidId(sessionId) && isValidSession(incoming()) && (
+          (isTeacher()
+            && incoming().exam_id == examId
+            && incoming().nis == sessionId
+            && incoming().created_at == request.time
+            && incoming().updated_at == request.time
+            && exists(/databases/$(database)/documents/exams/$(examId))) ||
+          (isStudentAuth()
+            && incoming().exam_id == examId
+            && incoming().nis == sessionId
+            && incoming().student_uid == request.auth.uid
+            && incoming().device_id is string
+            && incoming().status == 'MENGERJAKAN'
+            && incoming().question_order.size() >= 1
+            && incoming().violation_count == 0
+            && incoming().correct_count == 0
+            && incoming().wrong_count == 0
+            && incoming().unanswered_count == 0
+            && incoming().score == 0
+            && incoming().max_score == 0
+            && incoming().final_grade == 0
+            && incoming().graded == false
+            && incoming().started_at == request.time
+            && incoming().ends_at is timestamp
+            && incoming().ends_at > request.time
+            && incoming().last_heartbeat_at == request.time
+            && incoming().created_at == request.time
+            && incoming().updated_at == request.time
+            && get(/databases/$(database)/documents/exams/$(examId)).data.is_active == true)
+        );
+
+        allow update: if isValidId(sessionId) && isValidSession(incoming()) && (
+          (isTeacher()
+            && incoming().exam_id == existing().exam_id
+            && incoming().nis == existing().nis
+            && incoming().created_at == existing().created_at
+            && incoming().updated_at == request.time
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'student_name', 'student_class', 'student_uid', 'device_id',
+              'status', 'question_order', 'option_order', 'answers', 'violation_count',
+              'started_at', 'ends_at', 'submitted_at', 'last_heartbeat_at',
+              'correct_count', 'wrong_count', 'unanswered_count',
+              'score', 'max_score', 'final_grade', 'graded', 'updated_at'
+            ])) ||
+          (isStudentAuth()
+            && existing().exam_id == incoming().exam_id
+            && existing().nis == incoming().nis
+            && existing().created_at == incoming().created_at
+            && incoming().updated_at == request.time
+            && existing().status != 'SELESAI'
+            && (
+              // Action 1: Claim pre-registered BELUM_MULAI roster slot
+              (existing().status == 'BELUM_MULAI'
+                && existing().student_uid == null
+                && incoming().status == 'MENGERJAKAN'
+                && incoming().student_uid == request.auth.uid
+                && incoming().device_id is string
+                && incoming().question_order.size() >= 1
+                && incoming().started_at == request.time
+                && incoming().ends_at is timestamp
+                && incoming().ends_at > request.time
+                && incoming().last_heartbeat_at == request.time
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'student_name', 'student_class', 'student_uid', 'device_id',
+                  'status', 'question_order', 'option_order', 'started_at',
+                  'ends_at', 'last_heartbeat_at', 'updated_at'
+                ])) ||
+              // Action 2: Resume on same/reset device while active or locked
+              (existing().status in ['MENGERJAKAN', 'TERKUNCI']
+                && (existing().student_uid == request.auth.uid || (existing().student_uid == null && existing().device_id == null))
+                && incoming().student_uid == request.auth.uid
+                && incoming().device_id is string
+                && incoming().status == existing().status
+                && incoming().last_heartbeat_at == request.time
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'student_uid', 'device_id', 'last_heartbeat_at', 'updated_at'
+                ])) ||
+              // Action 3: Auto-save answers & heartbeat during MENGERJAKAN
+              (existing().status == 'MENGERJAKAN'
+                && existing().student_uid == request.auth.uid
+                && incoming().status == 'MENGERJAKAN'
+                && incoming().last_heartbeat_at == request.time
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'answers', 'last_heartbeat_at', 'updated_at'
+                ])) ||
+              // Action 4: Record screen violation & optionally lock session
+              (existing().status == 'MENGERJAKAN'
+                && existing().student_uid == request.auth.uid
+                && incoming().violation_count == existing().violation_count + 1
+                && incoming().status in ['MENGERJAKAN', 'TERKUNCI']
+                && incoming().last_heartbeat_at == request.time
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'violation_count', 'status', 'last_heartbeat_at', 'updated_at'
+                ])) ||
+              // Action 5: Final submit exam
+              (existing().status == 'MENGERJAKAN'
+                && existing().student_uid == request.auth.uid
+                && incoming().status == 'SELESAI'
+                && incoming().submitted_at == request.time
+                && incoming().last_heartbeat_at == request.time
+                && incoming().diff(existing()).affectedKeys().hasOnly([
+                  'answers', 'status', 'submitted_at', 'last_heartbeat_at', 'updated_at'
+                ]))
+            ))
+        );
+
+        allow delete: if isTeacher() && isValidId(sessionId);
+
+        match /violations/{violationId} {
+          allow get: if isTeacher() || (isStudentAuth() && isValidId(violationId) && (resource == null || existing().student_uid == request.auth.uid));
+          allow list: if isTeacher() || (isStudentAuth() && existing().student_uid == request.auth.uid);
+          allow create: if isValidId(violationId) && isValidViolationLog(incoming())
+            && incoming().session_id == sessionId
+            && incoming().created_at == request.time
+            && exists(/databases/$(database)/documents/exams/$(examId)/sessions/$(sessionId))
+            && (
+              isTeacher() ||
+              (isStudentAuth()
+                && incoming().student_uid == request.auth.uid
+                && get(/databases/$(database)/documents/exams/$(examId)/sessions/$(sessionId)).data.student_uid == request.auth.uid)
+            );
+          allow update: if false;
+          allow delete: if isTeacher() && isValidId(violationId);
+        }
+      }
+    }
+  }
+}
