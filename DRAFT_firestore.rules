@@ -131,7 +131,7 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'exam_id', 'nis', 'student_name', 'student_class', 'student_uid', 'device_id',
-          'status', 'question_order', 'option_order', 'answers', 'violation_count',
+          'submitted_pin', 'status', 'question_order', 'option_order', 'answers', 'violation_count',
           'started_at', 'ends_at', 'submitted_at', 'last_heartbeat_at',
           'correct_count', 'wrong_count', 'unanswered_count',
           'score', 'max_score', 'final_grade', 'graded', 'created_at', 'updated_at'
@@ -142,6 +142,7 @@ service cloud.firestore {
         && data.student_class is string && data.student_class.size() >= 1 && data.student_class.size() <= 40
         && (!('student_uid' in data) || data.student_uid == null || (data.student_uid is string && data.student_uid.size() >= 1 && data.student_uid.size() <= 128))
         && (!('device_id' in data) || data.device_id == null || (data.device_id is string && data.device_id.size() >= 1 && data.device_id.size() <= 128))
+        && (!('submitted_pin' in data) || data.submitted_pin == null || (data.submitted_pin is string && data.submitted_pin.size() >= 4 && data.submitted_pin.size() <= 16))
         && data.status in ['BELUM_MULAI', 'MENGERJAKAN', 'TERKUNCI', 'SELESAI']
         && data.question_order is list && data.question_order.size() <= 300
         && (data.question_order.size() == 0 || data.question_order[0] is string)
@@ -171,6 +172,20 @@ service cloud.firestore {
         && data.violation_type is string && data.violation_type.size() >= 1 && data.violation_type.size() <= 50
         && data.detail is string && data.detail.size() >= 1 && data.detail.size() <= 240
         && data.created_at is timestamp;
+    }
+
+    function isValidParticipantPin(data) {
+      return data.keys().hasAll(['pin', 'updated_at'])
+        && data.keys().hasOnly(['pin', 'updated_at'])
+        && data.pin is string && data.pin.size() >= 4 && data.pin.size() <= 16 && data.pin.matches('^[A-Z0-9]+$')
+        && data.updated_at is timestamp;
+    }
+
+    function hasValidPinForSession(examId, sessionId, data) {
+      return !exists(/databases/$(database)/documents/exams/$(examId)/participant_pins/$(sessionId))
+        || ('submitted_pin' in data
+          && data.submitted_pin is string
+          && get(/databases/$(database)/documents/exams/$(examId)/participant_pins/$(sessionId)).data.pin == data.submitted_pin);
     }
 
     match /test/connection {
@@ -250,6 +265,17 @@ service cloud.firestore {
         allow delete: if isTeacher() && isValidId(questionId);
       }
 
+      match /participant_pins/{sessionId} {
+        allow get, list: if isTeacher();
+        allow create: if isTeacher() && isValidId(sessionId) && isValidParticipantPin(incoming())
+          && incoming().updated_at == request.time
+          && exists(/databases/$(database)/documents/exams/$(examId));
+        allow update: if isTeacher() && isValidId(sessionId) && isValidParticipantPin(incoming())
+          && incoming().updated_at == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['pin', 'updated_at']);
+        allow delete: if isTeacher() && isValidId(sessionId);
+      }
+
       match /sessions/{sessionId} {
         allow get: if isTeacher() || (
           isStudentAuth() && isValidId(sessionId) && (
@@ -275,7 +301,7 @@ service cloud.firestore {
             && incoming().updated_at == request.time
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'student_name', 'student_class', 'student_uid', 'device_id',
-              'status', 'question_order', 'option_order', 'answers', 'violation_count',
+              'submitted_pin', 'status', 'question_order', 'option_order', 'answers', 'violation_count',
               'started_at', 'ends_at', 'submitted_at', 'last_heartbeat_at',
               'correct_count', 'wrong_count', 'unanswered_count',
               'score', 'max_score', 'final_grade', 'graded', 'updated_at'
@@ -287,7 +313,7 @@ service cloud.firestore {
             && incoming().updated_at == request.time
             && existing().status != 'SELESAI'
             && (
-              // Action 1: Claim pre-registered BELUM_MULAI roster slot
+              // Action 1: Claim pre-registered BELUM_MULAI roster slot with valid PIN
               (existing().status == 'BELUM_MULAI'
                 && existing().student_uid == null
                 && incoming().status == 'MENGERJAKAN'
@@ -299,19 +325,21 @@ service cloud.firestore {
                 && incoming().ends_at > request.time
                 && incoming().last_heartbeat_at == request.time
                 && get(/databases/$(database)/documents/exams/$(examId)).data.is_active == true
+                && hasValidPinForSession(examId, sessionId, incoming())
                 && incoming().diff(existing()).affectedKeys().hasOnly([
-                  'student_uid', 'device_id', 'status', 'question_order',
+                  'student_uid', 'device_id', 'submitted_pin', 'status', 'question_order',
                   'option_order', 'started_at', 'ends_at', 'last_heartbeat_at', 'updated_at'
                 ])) ||
-              // Action 2: Resume on same/reset device while active or locked
+              // Action 2: Resume on same/reset device while active or locked with valid PIN
               (existing().status in ['MENGERJAKAN', 'TERKUNCI']
                 && (existing().student_uid == request.auth.uid || (existing().student_uid == null && existing().device_id == null))
                 && incoming().student_uid == request.auth.uid
                 && incoming().device_id is string
                 && incoming().status == existing().status
                 && incoming().last_heartbeat_at == request.time
+                && hasValidPinForSession(examId, sessionId, incoming())
                 && incoming().diff(existing()).affectedKeys().hasOnly([
-                  'student_uid', 'device_id', 'last_heartbeat_at', 'updated_at'
+                  'student_uid', 'device_id', 'submitted_pin', 'last_heartbeat_at', 'updated_at'
                 ])) ||
               // Action 3: Auto-save answers & heartbeat during MENGERJAKAN
               (existing().status == 'MENGERJAKAN'

@@ -271,6 +271,10 @@
           "type": "string",
           "maxLength": 128
         },
+        "submitted_pin": {
+          "type": "string",
+          "maxLength": 16
+        },
         "status": {
           "type": "string",
           "enum": ["BELUM_MULAI", "MENGERJAKAN", "TERKUNCI", "SELESAI"]
@@ -381,6 +385,24 @@
         }
       },
       "required": ["session_id", "student_uid", "violation_type", "detail", "created_at"]
+    },
+    "ParticipantPin": {
+      "title": "ParticipantPin",
+      "description": "Teacher-only access PIN assigned to each registered student session.",
+      "type": "object",
+      "properties": {
+        "pin": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 16,
+          "pattern": "^[A-Z0-9]+$"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["pin", "updated_at"]
     }
   },
   "firestore": {
@@ -407,6 +429,10 @@
     "/exams/{examId}/sessions/{sessionId}": {
       "schema": { "$ref": "#/entities/StudentSession" },
       "description": "Student exam sessions keyed by normalized NIS."
+    },
+    "/exams/{examId}/participant_pins/{sessionId}": {
+      "schema": { "$ref": "#/entities/ParticipantPin" },
+      "description": "Teacher-only student access PINs verified during session claim/resume."
     },
     "/exams/{examId}/sessions/{sessionId}/violations/{violationId}": {
       "schema": { "$ref": "#/entities/ViolationLog" },

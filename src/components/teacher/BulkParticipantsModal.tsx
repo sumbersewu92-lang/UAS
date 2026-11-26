@@ -75,7 +75,7 @@ export function BulkParticipantsModal({
               Impor Daftar Peserta — {examTitle}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Salin-tempel langsung dari Excel/Google Sheets atau unggah file CSV (NIS, Nama, Kelas).
+              Salin-tempel langsung dari Excel/Google Sheets atau unggah file CSV (NIS, Nama, Kelas, PIN opsional).
             </p>
           </div>
           <button
@@ -123,17 +123,18 @@ export function BulkParticipantsModal({
           </div>
 
           <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3">
-            Urutan 3 kolom: <code className="font-mono">NIS / No. Ujian</code>,{' '}
-            <code className="font-mono">Nama Lengkap</code>, <code className="font-mono">Kelas</code>. Mendukung
-            salin-tempel langsung dari tabel Excel (pemisah Tab), koma (<code className="font-mono">,</code>), atau
-            titik koma (<code className="font-mono">;</code>). Peserta dengan NIS yang sudah ada akan dilewati otomatis.
+            Urutan 3–4 kolom: <code className="font-mono">NIS / No. Ujian</code>,{' '}
+            <code className="font-mono">Nama Lengkap</code>, <code className="font-mono">Kelas</code>, dan{' '}
+            <code className="font-mono">PIN</code> (opsional, otomatis 6 digit jika kosong). Mendukung salin-tempel
+            langsung dari tabel Excel (pemisah Tab), koma (<code className="font-mono">,</code>), atau titik koma (
+            <code className="font-mono">;</code>). Peserta dengan NIS yang sudah ada akan dilewati otomatis.
           </div>
 
           <textarea
             rows={7}
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
-            placeholder={`Tempel baris dari Excel atau CSV di sini...\nContoh:\n20260106,Budi Santoso,XI IPA 1\n20260107,Citra Dewi Lestari,XI IPA 1`}
+            placeholder={`Tempel baris dari Excel atau CSV di sini...\nContoh:\n20260106,Budi Santoso,XI IPA 1,458219\n20260107,Citra Dewi Lestari,XI IPA 1`}
             className="w-full p-3.5 text-sm font-mono bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700"
           />
 
@@ -154,6 +155,7 @@ export function BulkParticipantsModal({
                         <th className="py-2 px-3">NIS</th>
                         <th className="py-2 px-3">Nama Siswa</th>
                         <th className="py-2 px-3">Kelas</th>
+                        <th className="py-2 px-3">PIN</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -162,6 +164,9 @@ export function BulkParticipantsModal({
                           <td className="py-1.5 px-3 font-mono font-semibold text-slate-800">{row.nis}</td>
                           <td className="py-1.5 px-3 text-slate-900">{row.student_name}</td>
                           <td className="py-1.5 px-3 text-slate-600">{row.student_class}</td>
+                          <td className="py-1.5 px-3 font-mono text-slate-600">
+                            {row.pin || <span className="text-slate-400 italic font-sans">Otomatis</span>}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

@@ -38,11 +38,11 @@ export function GuideModal({ open, onClose }: GuideModalProps) {
             <ul className="list-disc pl-5 space-y-1.5">
               <li>
                 Buka tab <strong>Portal Siswa</strong>, lalu masukkan token{' '}
-                <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">PASMTK26</code>{' '}
-                beserta NIS peserta yang sudah terdaftar (contoh:{' '}
-                <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">20260103</code> — Bagas
-                Pratama), atau cukup klik <strong>Isi Data Contoh</strong> lalu tekan{' '}
-                <strong>Mulai / Lanjutkan Ujian</strong>. Untuk paket{' '}
+                <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">PASMTK26</code>, NIS{' '}
+                <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">20260103</code> (Bagas
+                Pratama), dan PIN{' '}
+                <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">123456</code>, atau cukup
+                klik <strong>Isi Data Contoh</strong> lalu tekan <strong>Mulai / Lanjutkan Ujian</strong>. Untuk paket{' '}
                 <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900">PASBIN26</code>,
                 tambahkan/impor peserta terlebih dahulu di Dashboard Guru.
               </li>
@@ -73,11 +73,13 @@ export function GuideModal({ open, onClose }: GuideModalProps) {
               <li>
                 Pada tab <strong>Pantauan &amp; Rekap</strong>, sudah tersedia peserta contoh termasuk{' '}
                 <strong>Nadia Putri Rahayu (NIS 20260102)</strong> yang berstatus <strong>Terkunci</strong> untuk
-                menguji tombol <strong>Buka Kunci</strong> dan melihat log pelanggaran layar secara real-time.
+                menguji tombol <strong>Buka Kunci</strong>, melihat log pelanggaran layar secara real-time, maupun
+                menggunakan <strong>Reset Sesi</strong> jika siswa perlu mengulang dari awal dalam kondisi darurat.
               </li>
               <li>
-                Gunakan tombol <strong>Ekspor Rekap CSV</strong> untuk mengunduh rekap nilai lengkap (NIS, Nama, Kelas,
-                Benar/Salah, Nilai Akhir, dan Jumlah Pelanggaran Layar) yang siap dibuka di Excel.
+                Gunakan tombol <strong>Kartu PIN (CSV)</strong> untuk mengunduh daftar Token, NIS, Nama, Kelas, dan PIN
+                pribadi setiap peserta sebelum ujian dimulai, serta tombol <strong>Ekspor Rekap CSV</strong> untuk
+                mengunduh rekap nilai lengkap yang siap dibuka di Excel.
               </li>
             </ul>
           </section>
@@ -90,7 +92,8 @@ export function GuideModal({ open, onClose }: GuideModalProps) {
               <li>
                 Di tab <strong>Bank Soal</strong>, klik <strong>Impor Massal Soal</strong> untuk menempel banyak soal
                 sekaligus (format blok teks atau CSV). Di tab <strong>Pantauan &amp; Rekap</strong>, gunakan{' '}
-                <strong>Impor Peserta (Excel/CSV)</strong> untuk memuat daftar NIS, Nama, dan Kelas dari Excel.
+                <strong>Impor Peserta (Excel/CSV)</strong> untuk memuat daftar NIS, Nama, Kelas, serta PIN opsional
+                (otomatis 6 digit jika dikosongkan).
               </li>
               <li>
                 Di tab <strong>Paket Ujian</strong>, klik <strong>QR Portal</strong> untuk mencetak QR Code yang

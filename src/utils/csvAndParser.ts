@@ -227,13 +227,14 @@ export interface ParsedParticipant {
   nis: string;
   student_name: string;
   student_class: string;
+  pin?: string;
 }
 
 export const PARTICIPANTS_CSV_TEMPLATE = [
-  'nis,nama,kelas',
-  '20260106,Budi Santoso,XI IPA 1',
-  '20260107,Citra Dewi Lestari,XI IPA 1',
-  '20260108,Fajar Nugroho,XI IPA 2',
+  'nis,nama,kelas,pin',
+  '20260106,Budi Santoso,XI IPA 1,482915',
+  '20260107,Citra Dewi Lestari,XI IPA 1,',
+  '20260108,Fajar Nugroho,XI IPA 2,',
 ].join('\n');
 
 export function parseParticipantsInput(rawText: string): {
@@ -276,13 +277,14 @@ export function parseParticipantsInput(rawText: string): {
     }
 
     if (cols.length < 3) {
-      errors.push(`Baris ${idx + 1}: butuh 3 kolom (NIS, Nama, Kelas).`);
+      errors.push(`Baris ${idx + 1}: butuh minimal 3 kolom (NIS, Nama, Kelas, dan opsional PIN).`);
       return;
     }
 
     const nis = cols[0].trim().toUpperCase();
     const student_name = cols[1].trim();
     const student_class = cols[2].trim();
+    const rawPin = (cols[3] || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
     if (!nis || !student_name || !student_class) {
       errors.push(`Baris ${idx + 1}: kolom NIS, Nama, atau Kelas masih kosong.`);
@@ -294,13 +296,23 @@ export function parseParticipantsInput(rawText: string): {
       return;
     }
 
+    if (rawPin && (rawPin.length < 4 || rawPin.length > 16)) {
+      errors.push(`Baris ${idx + 1}: PIN "${rawPin}" harus 4–16 karakter huruf/angka (atau kosongkan agar otomatis).`);
+      return;
+    }
+
     if (seenNis.has(nis)) {
       errors.push(`Baris ${idx + 1}: NIS "${nis}" duplikat di daftar impor.`);
       return;
     }
 
     seenNis.add(nis);
-    items.push({ nis, student_name, student_class });
+    items.push({
+      nis,
+      student_name,
+      student_class,
+      pin: rawPin || undefined,
+    });
   });
 
   return { items, errors };

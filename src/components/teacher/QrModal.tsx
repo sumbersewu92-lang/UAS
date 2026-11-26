@@ -30,6 +30,7 @@ export function QrModal({ exam, onClose }: QrModalProps) {
         const base = `${window.location.origin}${cleanPath}`;
         const url = new URL(base);
         url.searchParams.set('token', exam.token);
+        url.searchParams.set('mode', 'peserta');
         const portalUrl = url.toString();
 
         const svg = await QRCode.toString(portalUrl, {

@@ -8,10 +8,12 @@ import {
   FileSpreadsheet,
   History,
   ImagePlus,
+  KeyRound,
   Lock,
   Plus,
   QrCode,
   RefreshCw,
+  RotateCcw,
   Search,
   Smartphone,
   Trash2,
@@ -33,6 +35,7 @@ import type {
 import { compressImageFile } from '../utils/csvAndParser';
 import {
   addSingleParticipant,
+  buildParticipantCardsCsv,
   buildParticipantsCsv,
   deleteTeacherExam,
   deleteTeacherQuestion,
@@ -40,10 +43,13 @@ import {
   listSessionViolations,
   listTeacherExams,
   listTeacherQuestions,
+  regenerateStudentPin,
   resetStudentDevice,
+  resetStudentSession,
   saveTeacherExam,
   saveTeacherQuestion,
   subscribeExamMonitor,
+  syncAndListParticipantPins,
   unlockStudentSession,
 } from '../utils/firestoreService';
 import { BulkImportModal } from './teacher/BulkImportModal';
@@ -186,7 +192,14 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
   const [loadingViolations, setLoadingViolations] = useState(false);
   const [addParticipantOpen, setAddParticipantOpen] = useState(false);
   const [bulkParticipantsOpen, setBulkParticipantsOpen] = useState(false);
-  const [newParticipant, setNewParticipant] = useState({ nis: '', student_name: '', student_class: '' });
+  const [newParticipant, setNewParticipant] = useState({
+    nis: '',
+    student_name: '',
+    student_class: '',
+    pin: '',
+  });
+  const [participantPins, setParticipantPins] = useState<Record<string, string>>({});
+  const [confirmResetSessionId, setConfirmResetSessionId] = useState<string | null>(null);
   const [exportingCsv, setExportingCsv] = useState(false);
 
   // Real-time locked alerts
@@ -242,6 +255,15 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
     }
   }, [authReady, authUser, selectedExam, activeTab, fetchQuestions]);
 
+  const refreshPins = useCallback(async (examId: string) => {
+    try {
+      const pins = await syncAndListParticipantPins(examId);
+      setParticipantPins(pins);
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : 'Gagal memuat PIN peserta.');
+    }
+  }, []);
+
   // Keep real-time monitor active across tabs for the selected exam so locked alerts fire immediately
   useEffect(() => {
     if (!authReady || !authUser || !selectedExam) return;
@@ -250,7 +272,10 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
       prevExamIdRef.current = selectedExam.id;
       prevStatusMapRef.current = null;
       setLockedAlerts([]);
+      setConfirmResetSessionId(null);
     }
+
+    void refreshPins(selectedExam.id);
 
     setLoadingMonitor(true);
     const unsub = subscribeExamMonitor(selectedExam.id, selectedExam.question_count, (rows) => {
@@ -301,7 +326,7 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
     });
 
     return () => unsub();
-  }, [authReady, authUser, selectedExam?.id, selectedExam?.question_count]);
+  }, [authReady, authUser, selectedExam?.id, selectedExam?.question_count, refreshPins]);
 
   const filteredParticipants = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -519,6 +544,32 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
     }
   }
 
+  async function handleResetSession(sessionId: string, studentName: string) {
+    if (!selectedExam) return;
+    try {
+      await resetStudentSession(selectedExam.id, sessionId);
+      setConfirmResetSessionId(null);
+      setLockedAlerts((prev) => prev.filter((a) => a.participantId !== sessionId));
+      setBannerSuccess(
+        `Sesi ${studentName} (NIS ${sessionId}) berhasil direset ke Belum Mulai. Siswa dapat mengulang ujian.`
+      );
+      await fetchExams();
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : 'Gagal mereset sesi ujian siswa.');
+    }
+  }
+
+  async function handleRegeneratePin(nis: string) {
+    if (!selectedExam) return;
+    try {
+      const nextPin = await regenerateStudentPin(selectedExam.id, nis);
+      setParticipantPins((prev) => ({ ...prev, [nis]: nextPin }));
+      setBannerSuccess(`PIN baru untuk NIS ${nis} berhasil dibuat: ${nextPin}`);
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : 'Gagal mengacak ulang PIN peserta.');
+    }
+  }
+
   async function openViolationDrawer(p: MonitorParticipant) {
     if (!selectedExam) return;
     setViolationDrawerParticipant(p);
@@ -539,13 +590,28 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
     if (!selectedExam) return;
     setBannerError(null);
     try {
-      await addSingleParticipant(selectedExam.id, newParticipant);
-      setNewParticipant({ nis: '', student_name: '', student_class: '' });
+      const addedNis = newParticipant.nis.trim();
+      const { pin } = await addSingleParticipant(selectedExam.id, newParticipant);
+      setNewParticipant({ nis: '', student_name: '', student_class: '', pin: '' });
       setAddParticipantOpen(false);
+      setBannerSuccess(`Peserta NIS ${addedNis.toUpperCase()} ditambahkan dengan PIN: ${pin}`);
+      await refreshPins(selectedExam.id);
       await fetchExams();
     } catch (err) {
       setBannerError(err instanceof Error ? err.message : 'Gagal menambah peserta.');
     }
+  }
+
+  function handleExportCardsCsv() {
+    if (!selectedExam) return;
+    const csv = buildParticipantCardsCsv(participants, participantPins, selectedExam.token);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kartu-peserta-pin-${selectedExam.token}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function handleExportCsv() {
@@ -1214,6 +1280,16 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
 
                 <button
                   type="button"
+                  onClick={handleExportCardsCsv}
+                  disabled={participants.length === 0}
+                  className="min-h-[40px] px-3.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 text-xs font-semibold text-blue-800 inline-flex items-center gap-1.5"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Kartu PIN (CSV)</span>
+                </button>
+
+                <button
+                  type="button"
                   disabled={exportingCsv}
                   onClick={handleExportCsv}
                   className="min-h-[40px] px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold text-white inline-flex items-center gap-1.5"
@@ -1252,7 +1328,7 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
             {addParticipantOpen && (
               <form
                 onSubmit={handleAddParticipant}
-                className="pt-3 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-4 gap-2.5"
+                className="pt-3 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-5 gap-2.5"
               >
                 <input
                   type="text"
@@ -1277,6 +1353,13 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
                   value={newParticipant.student_class}
                   onChange={(e) => setNewParticipant((p) => ({ ...p, student_class: e.target.value }))}
                   className="min-h-[40px] px-3 text-sm border border-slate-300 rounded-xl"
+                />
+                <input
+                  type="text"
+                  placeholder="PIN (opsional, otomatis)"
+                  value={newParticipant.pin}
+                  onChange={(e) => setNewParticipant((p) => ({ ...p, pin: e.target.value.toUpperCase() }))}
+                  className="min-h-[40px] px-3 text-sm font-mono uppercase border border-slate-300 rounded-xl"
                 />
                 <button
                   type="submit"
@@ -1305,6 +1388,7 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
                         <th className="py-3 px-4">NIS / No. Ujian</th>
+                        <th className="py-3 px-4">PIN</th>
                         <th className="py-3 px-4">Nama &amp; Kelas</th>
                         <th className="py-3 px-4">Status</th>
                         <th className="py-3 px-4 text-right">Progres</th>
@@ -1315,69 +1399,116 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
-                      {filteredParticipants.map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-50/70">
-                          <td className="py-3 px-4 font-mono text-xs font-semibold text-slate-800 tabular-nums">
-                            {p.nis}
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="font-semibold text-slate-900">{p.student_name}</div>
-                            <div className="text-xs text-slate-500">{p.student_class}</div>
-                          </td>
-                          <td className="py-3 px-4 whitespace-nowrap">{renderStatusLabel(p.status)}</td>
-                          <td className="py-3 px-4 text-right font-mono text-xs text-slate-700 tabular-nums">
-                            {p.answered_count}/{p.total_questions}
-                          </td>
-                          <td className="py-3 px-4 text-right font-mono text-xs text-slate-700 tabular-nums">
-                            {p.status === 'SELESAI' ? 'Selesai' : formatRemaining(p.remaining_seconds)}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() => void openViolationDrawer(p)}
-                              className={`inline-flex items-center gap-1 font-mono text-xs font-semibold tabular-nums hover:underline ${
-                                p.violation_count > 0 ? 'text-red-600' : 'text-slate-500'
-                              }`}
-                            >
-                              <History className="w-3.5 h-3.5" />
-                              <span>{p.violation_count}</span>
-                            </button>
-                          </td>
-                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 tabular-nums">
-                            {p.status === 'SELESAI' ? (p.graded ? p.final_grade : '...') : '-'}
-                          </td>
-                          <td className="py-3 px-4 text-right whitespace-nowrap">
-                            <div className="inline-flex items-center gap-1.5">
-                              {p.status === 'TERKUNCI' && (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleUnlockSession(p.id)}
-                                  className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-semibold text-white inline-flex items-center gap-1"
-                                >
-                                  <Unlock className="w-3.5 h-3.5" />
-                                  <span>Buka Kunci</span>
-                                </button>
-                              )}
-                              {(p.status === 'MENGERJAKAN' || p.status === 'TERKUNCI') && (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleResetDevice(p.id)}
-                                  title="Izinkan siswa lanjut dari HP lain jika HP sebelumnya mati"
-                                  className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 inline-flex items-center gap-1"
-                                >
-                                  <Smartphone className="w-3.5 h-3.5" />
-                                  <span>Reset HP</span>
-                                </button>
-                              )}
-                              {p.status === 'SELESAI' && p.graded && (
-                                <span className="text-xs text-slate-400 tabular-nums">
-                                  {p.correct_count}B / {p.wrong_count}S
+                      {filteredParticipants.map((p) => {
+                        const pinValue = participantPins[p.nis];
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50/70">
+                            <td className="py-3 px-4 font-mono text-xs font-semibold text-slate-800 tabular-nums">
+                              {p.nis}
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1.5">
+                                <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded select-all tabular-nums">
+                                  {pinValue || '...'}
                                 </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRegeneratePin(p.nis)}
+                                  title={`Acak PIN baru untuk ${p.student_name}`}
+                                  className="p-1 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50"
+                                >
+                                  <KeyRound className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-semibold text-slate-900">{p.student_name}</div>
+                              <div className="text-xs text-slate-500">{p.student_class}</div>
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">{renderStatusLabel(p.status)}</td>
+                            <td className="py-3 px-4 text-right font-mono text-xs text-slate-700 tabular-nums">
+                              {p.answered_count}/{p.total_questions}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono text-xs text-slate-700 tabular-nums">
+                              {p.status === 'SELESAI' ? 'Selesai' : formatRemaining(p.remaining_seconds)}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => void openViolationDrawer(p)}
+                                className={`inline-flex items-center gap-1 font-mono text-xs font-semibold tabular-nums hover:underline ${
+                                  p.violation_count > 0 ? 'text-red-600' : 'text-slate-500'
+                                }`}
+                              >
+                                <History className="w-3.5 h-3.5" />
+                                <span>{p.violation_count}</span>
+                              </button>
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 tabular-nums">
+                              {p.status === 'SELESAI' ? (p.graded ? p.final_grade : '...') : '-'}
+                            </td>
+                            <td className="py-3 px-4 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1.5">
+                                {p.status === 'TERKUNCI' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleUnlockSession(p.id)}
+                                    className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-xs font-semibold text-white inline-flex items-center gap-1"
+                                  >
+                                    <Unlock className="w-3.5 h-3.5" />
+                                    <span>Buka Kunci</span>
+                                  </button>
+                                )}
+                                {(p.status === 'MENGERJAKAN' || p.status === 'TERKUNCI') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleResetDevice(p.id)}
+                                    title="Izinkan siswa lanjut dari HP lain jika HP sebelumnya mati"
+                                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 inline-flex items-center gap-1"
+                                  >
+                                    <Smartphone className="w-3.5 h-3.5" />
+                                    <span>Reset HP</span>
+                                  </button>
+                                )}
+                                {p.status !== 'BELUM_MULAI' &&
+                                  (confirmResetSessionId === p.id ? (
+                                    <div className="inline-flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleResetSession(p.id, p.student_name)}
+                                        className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-xs font-semibold text-white"
+                                      >
+                                        Yakin Reset?
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmResetSessionId(null)}
+                                        className="px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-600"
+                                      >
+                                        Batal
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmResetSessionId(p.id)}
+                                      title="Reset seluruh sesi ujian siswa ke Belum Mulai (menghapus jawaban & log pelanggaran)"
+                                      className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-xs font-medium text-amber-800 inline-flex items-center gap-1"
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                      <span>Reset Sesi</span>
+                                    </button>
+                                  ))}
+                                {p.status === 'SELESAI' && p.graded && (
+                                  <span className="text-xs text-slate-400 tabular-nums ml-1">
+                                    {p.correct_count}B / {p.wrong_count}S
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1385,72 +1516,118 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
 
               {/* Mobile Friendly Monitor Cards */}
               <div className="md:hidden space-y-3">
-                {filteredParticipants.map((p) => (
-                  <article key={p.id} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="text-sm font-bold text-slate-900">{p.student_name}</div>
-                        <div className="text-xs text-slate-500 font-mono tabular-nums">
-                          {p.nis} · {p.student_class}
+                {filteredParticipants.map((p) => {
+                  const pinValue = participantPins[p.nis];
+                  return (
+                    <article key={p.id} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-bold text-slate-900">{p.student_name}</div>
+                          <div className="text-xs text-slate-500 font-mono tabular-nums">
+                            {p.nis} · {p.student_class}
+                          </div>
+                          <div className="mt-1 inline-flex items-center gap-1.5 text-xs text-slate-600">
+                            <span>PIN:</span>
+                            <span className="font-mono font-semibold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded select-all tabular-nums">
+                              {pinValue || '...'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void handleRegeneratePin(p.nis)}
+                              title="Acak PIN baru"
+                              className="text-blue-700 hover:underline font-medium"
+                            >
+                              Acak
+                            </button>
+                          </div>
                         </div>
+                        {renderStatusLabel(p.status)}
                       </div>
-                      {renderStatusLabel(p.status)}
-                    </div>
 
-                    <div className="grid grid-cols-3 gap-2 text-xs bg-slate-50 rounded-xl p-2.5 tabular-nums">
-                      <div>
-                        <div className="text-slate-500">Progres</div>
-                        <div className="font-mono font-semibold text-slate-900">
-                          {p.answered_count}/{p.total_questions}
+                      <div className="grid grid-cols-3 gap-2 text-xs bg-slate-50 rounded-xl p-2.5 tabular-nums">
+                        <div>
+                          <div className="text-slate-500">Progres</div>
+                          <div className="font-mono font-semibold text-slate-900">
+                            {p.answered_count}/{p.total_questions}
+                          </div>
                         </div>
-                      </div>
-                      <div>
-                        <div className="text-slate-500">Pelanggaran</div>
-                        <button
-                          type="button"
-                          onClick={() => void openViolationDrawer(p)}
-                          className={`font-mono font-semibold underline ${
-                            p.violation_count > 0 ? 'text-red-600' : 'text-slate-800'
-                          }`}
-                        >
-                          {p.violation_count} log
-                        </button>
-                      </div>
-                      <div>
-                        <div className="text-slate-500">Nilai</div>
-                        <div className="font-mono font-bold text-blue-700">
-                          {p.status === 'SELESAI'
-                            ? p.graded
-                              ? p.final_grade
-                              : '...'
-                            : formatRemaining(p.remaining_seconds)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {(p.status === 'TERKUNCI' || p.status === 'MENGERJAKAN') && (
-                      <div className="flex items-center gap-2">
-                        {p.status === 'TERKUNCI' && (
+                        <div>
+                          <div className="text-slate-500">Pelanggaran</div>
                           <button
                             type="button"
-                            onClick={() => void handleUnlockSession(p.id)}
-                            className="flex-1 min-h-[42px] px-3 rounded-xl bg-red-600 text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5"
+                            onClick={() => void openViolationDrawer(p)}
+                            className={`font-mono font-semibold underline ${
+                              p.violation_count > 0 ? 'text-red-600' : 'text-slate-800'
+                            }`}
                           >
-                            <Unlock className="w-3.5 h-3.5" />
-                            <span>Buka Kunci Sesi</span>
+                            {p.violation_count} log
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => void handleResetDevice(p.id)}
-                          className="min-h-[42px] px-3 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700"
-                        >
-                          Reset HP
-                        </button>
+                        </div>
+                        <div>
+                          <div className="text-slate-500">Nilai</div>
+                          <div className="font-mono font-bold text-blue-700">
+                            {p.status === 'SELESAI'
+                              ? p.graded
+                                ? p.final_grade
+                                : '...'
+                              : formatRemaining(p.remaining_seconds)}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </article>
-                ))}
+
+                      {p.status !== 'BELUM_MULAI' && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          {p.status === 'TERKUNCI' && (
+                            <button
+                              type="button"
+                              onClick={() => void handleUnlockSession(p.id)}
+                              className="flex-1 min-h-[42px] px-3 rounded-xl bg-red-600 text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5"
+                            >
+                              <Unlock className="w-3.5 h-3.5" />
+                              <span>Buka Kunci Sesi</span>
+                            </button>
+                          )}
+                          {(p.status === 'MENGERJAKAN' || p.status === 'TERKUNCI') && (
+                            <button
+                              type="button"
+                              onClick={() => void handleResetDevice(p.id)}
+                              className="min-h-[42px] px-3 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700"
+                            >
+                              Reset HP
+                            </button>
+                          )}
+                          {confirmResetSessionId === p.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => void handleResetSession(p.id, p.student_name)}
+                                className="min-h-[42px] px-3 rounded-xl bg-amber-600 text-xs font-semibold text-white"
+                              >
+                                Yakin Reset?
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmResetSessionId(null)}
+                                className="min-h-[42px] px-3 rounded-xl border border-slate-300 text-xs font-semibold text-slate-600"
+                              >
+                                Batal
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmResetSessionId(p.id)}
+                              className="min-h-[42px] px-3 rounded-xl border border-amber-300 bg-amber-50 text-xs font-semibold text-amber-800 inline-flex items-center gap-1"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Reset Sesi</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             </>
           )}
@@ -1716,8 +1893,9 @@ export function TeacherDashboard({ authReady, authUser }: TeacherDashboardProps)
             onClose={() => setBulkParticipantsOpen(false)}
             onImported={({ inserted, skipped }) => {
               setBannerSuccess(
-                `Impor selesai: ${inserted} peserta ditambahkan${skipped > 0 ? `, ${skipped} dilewati karena NIS sudah terdaftar` : ''}.`
+                `Impor selesai: ${inserted} peserta ditambahkan beserta PIN pribadi${skipped > 0 ? `, ${skipped} dilewati karena NIS sudah terdaftar` : ''}.`
               );
+              void refreshPins(selectedExam.id);
               void fetchExams();
             }}
           />

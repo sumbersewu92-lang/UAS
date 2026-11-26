@@ -64,6 +64,18 @@ export function normalizeNis(raw: string): string {
     .slice(0, 40);
 }
 
+export function normalizePin(raw: string): string {
+  return raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 16);
+}
+
+export function generateStudentPin(): string {
+  return String(100000 + Math.floor(Math.random() * 900000));
+}
+
 export function makeDocId(prefix: string): string {
   const rand = Math.random().toString(36).slice(2, 8);
   return `${prefix}_${Date.now().toString(36)}_${rand}`;
@@ -382,6 +394,19 @@ export async function ensureSeedDataIfEmpty(teacherUid: string): Promise<void> {
       updated_at: serverTimestamp(),
     });
 
+    batch3.set(doc(db, 'exams', exam1Id, 'participant_pins', '20260101'), {
+      pin: '112233',
+      updated_at: serverTimestamp(),
+    });
+    batch3.set(doc(db, 'exams', exam1Id, 'participant_pins', '20260102'), {
+      pin: '223344',
+      updated_at: serverTimestamp(),
+    });
+    batch3.set(doc(db, 'exams', exam1Id, 'participant_pins', '20260103'), {
+      pin: '123456',
+      updated_at: serverTimestamp(),
+    });
+
     await batch3.commit();
 
     const batch4 = writeBatch(db);
@@ -438,8 +463,7 @@ export async function lookupExamByToken(rawToken: string): Promise<{ exam: Looku
 
 export async function joinExamSession(params: {
   nis: string;
-  studentName: string;
-  studentClass: string;
+  pin: string;
   token: string;
   deviceId: string;
 }): Promise<{ data?: ExamJoinResponse; error?: string; completedSummary?: ExamResultSummary }> {
@@ -447,12 +471,11 @@ export async function joinExamSession(params: {
 
   const token = normalizeToken(params.token);
   const nis = normalizeNis(params.nis);
-  const studentName = clampStr(params.studentName, 100);
-  const studentClass = clampStr(params.studentClass, 40);
+  const cleanPin = normalizePin(params.pin);
   const deviceId = clampStr(params.deviceId, 128);
 
-  if (!token || !nis || !studentName || !studentClass) {
-    return { error: 'Lengkapi Token Ujian, NIS, Nama Lengkap, dan Kelas terlebih dahulu.' };
+  if (!token || !nis || cleanPin.length < 4) {
+    return { error: 'Lengkapi Token Ujian, Nomor Ujian / NIS, dan PIN Peserta (minimal 4 karakter).' };
   }
 
   let tokenData: Record<string, unknown>;
@@ -572,6 +595,11 @@ export async function joinExamSession(params: {
     const curStatus = cur.status as SessionStatus;
 
     if (curStatus === 'SELESAI') {
+      if (typeof cur.submitted_pin === 'string' && cur.submitted_pin.length >= 4 && cur.submitted_pin !== cleanPin) {
+        return {
+          error: 'PIN Peserta salah. Periksa kembali PIN pada kartu peserta ujian Anda atau hubungi pengawas.',
+        };
+      }
       const answeredCount = Object.keys((cur.answers as Record<string, OptionKey>) || {}).length;
       return {
         error: `Nomor Ujian / NIS ${nis} sudah mengumpulkan ujian ini.`,
@@ -601,6 +629,7 @@ export async function joinExamSession(params: {
         await updateDoc(sessionRef, {
           student_uid: user.uid,
           device_id: deviceId,
+          submitted_pin: cleanPin,
           status: 'MENGERJAKAN',
           question_order: questionOrder,
           option_order: optionOrder,
@@ -612,6 +641,12 @@ export async function joinExamSession(params: {
         const readBack = await getDoc(sessionRef);
         finalSessionData = readBack.data() || {};
       } catch (error) {
+        const code = (error as { code?: string })?.code;
+        if (code === 'permission-denied') {
+          return {
+            error: 'PIN Peserta salah. Periksa kembali PIN pada kartu peserta ujian Anda atau hubungi pengawas.',
+          };
+        }
         handleFirestoreError(error, OperationType.UPDATE, sessionPath);
       }
     } else {
@@ -626,12 +661,19 @@ export async function joinExamSession(params: {
         await updateDoc(sessionRef, {
           student_uid: user.uid,
           device_id: deviceId,
+          submitted_pin: cleanPin,
           last_heartbeat_at: serverTimestamp(),
           updated_at: serverTimestamp(),
         });
         const readBack = await getDoc(sessionRef);
         finalSessionData = readBack.data() || cur;
       } catch (error) {
+        const code = (error as { code?: string })?.code;
+        if (code === 'permission-denied') {
+          return {
+            error: 'PIN Peserta salah. Periksa kembali PIN pada kartu peserta ujian Anda atau hubungi pengawas.',
+          };
+        }
         handleFirestoreError(error, OperationType.UPDATE, sessionPath);
       }
     }
@@ -692,8 +734,8 @@ export async function joinExamSession(params: {
         id: nis,
         exam_id: examId,
         nis,
-        student_name: String(finalSessionData.student_name ?? studentName),
-        student_class: String(finalSessionData.student_class ?? studentClass),
+        student_name: String(finalSessionData.student_name ?? nis),
+        student_class: String(finalSessionData.student_class ?? ''),
         status: (finalSessionData.status as SessionStatus) || 'MENGERJAKAN',
         violation_count: Number(finalSessionData.violation_count ?? 0),
         started_at: startedAtIso,
@@ -1116,10 +1158,11 @@ export async function saveTeacherExam(params: {
 export async function deleteTeacherExam(exam: TeacherExam): Promise<void> {
   const examId = exam.id;
   try {
-    const [qSnap, kSnap, sSnap] = await Promise.all([
+    const [qSnap, kSnap, sSnap, pSnap] = await Promise.all([
       getDocs(collection(db, 'exams', examId, 'questions')),
       getDocs(collection(db, 'exams', examId, 'answer_keys')),
       getDocs(collection(db, 'exams', examId, 'sessions')),
+      getDocs(collection(db, 'exams', examId, 'participant_pins')),
     ]);
 
     for (const sDoc of sSnap.docs) {
@@ -1135,6 +1178,7 @@ export async function deleteTeacherExam(exam: TeacherExam): Promise<void> {
       ...qSnap.docs.map((d) => d.ref),
       ...kSnap.docs.map((d) => d.ref),
       ...sSnap.docs.map((d) => d.ref),
+      ...pSnap.docs.map((d) => d.ref),
       doc(db, 'exam_tokens', exam.token),
       doc(db, 'exams', examId),
     ];
@@ -1550,16 +1594,115 @@ export async function resetStudentDevice(examId: string, sessionId: string): Pro
   }
 }
 
+export async function resetStudentSession(examId: string, sessionId: string): Promise<void> {
+  const path = `exams/${examId}/sessions/${sessionId}`;
+  try {
+    const vSnap = await getDocs(collection(db, 'exams', examId, 'sessions', sessionId, 'violations'));
+    for (let i = 0; i < vSnap.docs.length; i += 200) {
+      const delBatch = writeBatch(db);
+      vSnap.docs.slice(i, i + 200).forEach((v) => delBatch.delete(v.ref));
+      await delBatch.commit();
+    }
+
+    await updateDoc(doc(db, 'exams', examId, 'sessions', sessionId), {
+      student_uid: null,
+      device_id: null,
+      submitted_pin: null,
+      status: 'BELUM_MULAI',
+      question_order: [],
+      option_order: {},
+      answers: {},
+      violation_count: 0,
+      started_at: null,
+      ends_at: null,
+      submitted_at: null,
+      last_heartbeat_at: null,
+      correct_count: 0,
+      wrong_count: 0,
+      unanswered_count: 0,
+      score: 0,
+      max_score: 0,
+      final_grade: 0,
+      graded: false,
+      updated_at: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function syncAndListParticipantPins(examId: string): Promise<Record<string, string>> {
+  const path = `exams/${examId}/participant_pins`;
+  try {
+    const [pSnap, sSnap] = await Promise.all([
+      getDocs(collection(db, 'exams', examId, 'participant_pins')),
+      getDocs(collection(db, 'exams', examId, 'sessions')),
+    ]);
+
+    const pinMap: Record<string, string> = {};
+    pSnap.docs.forEach((d) => {
+      const val = d.data().pin;
+      if (typeof val === 'string' && val.length >= 4) {
+        pinMap[d.id] = val;
+      }
+    });
+
+    const missing = sSnap.docs.filter((s) => !pinMap[s.id]);
+    if (missing.length > 0) {
+      const defaultDemoPins: Record<string, string> = {
+        '20260101': '112233',
+        '20260102': '223344',
+        '20260103': '123456',
+      };
+      for (let i = 0; i < missing.length; i += 200) {
+        const batch = writeBatch(db);
+        missing.slice(i, i + 200).forEach((s) => {
+          const pin = defaultDemoPins[s.id] ?? generateStudentPin();
+          pinMap[s.id] = pin;
+          batch.set(doc(db, 'exams', examId, 'participant_pins', s.id), {
+            pin,
+            updated_at: serverTimestamp(),
+          });
+        });
+        await batch.commit();
+      }
+    }
+
+    return pinMap;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+export async function regenerateStudentPin(examId: string, nis: string): Promise<string> {
+  const pin = generateStudentPin();
+  const path = `exams/${examId}/participant_pins/${nis}`;
+  try {
+    await setDoc(doc(db, 'exams', examId, 'participant_pins', nis), {
+      pin,
+      updated_at: serverTimestamp(),
+    });
+    return pin;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
 export async function addSingleParticipant(
   examId: string,
-  participant: { nis: string; student_name: string; student_class: string }
-): Promise<void> {
+  participant: { nis: string; student_name: string; student_class: string; pin?: string }
+): Promise<{ pin: string }> {
   const nis = normalizeNis(participant.nis);
   const studentName = clampStr(participant.student_name, 100);
   const studentClass = clampStr(participant.student_class, 40);
+  const rawPin = participant.pin ? normalizePin(participant.pin) : '';
+  const pin = rawPin || generateStudentPin();
 
   if (!nis || !studentName || !studentClass) {
     throw new Error('NIS, Nama, dan Kelas wajib diisi.');
+  }
+  if (rawPin && rawPin.length < 4) {
+    throw new Error('PIN Peserta minimal 4 karakter huruf/angka (atau kosongkan agar otomatis).');
   }
 
   const ref = doc(db, 'exams', examId, 'sessions', nis);
@@ -1569,7 +1712,8 @@ export async function addSingleParticipant(
   }
 
   try {
-    await setDoc(ref, {
+    const batch = writeBatch(db);
+    batch.set(ref, {
       exam_id: examId,
       nis,
       student_name: studentName,
@@ -1595,6 +1739,12 @@ export async function addSingleParticipant(
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),
     });
+    batch.set(doc(db, 'exams', examId, 'participant_pins', nis), {
+      pin,
+      updated_at: serverTimestamp(),
+    });
+    await batch.commit();
+    return { pin };
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `exams/${examId}/sessions/${nis}`);
   }
@@ -1602,7 +1752,7 @@ export async function addSingleParticipant(
 
 export async function bulkImportParticipantsToExam(
   examId: string,
-  items: Array<{ nis: string; student_name: string; student_class: string }>
+  items: Array<{ nis: string; student_name: string; student_class: string; pin?: string }>
 ): Promise<{ inserted: number; skipped: number }> {
   if (items.length === 0) return { inserted: 0, skipped: 0 };
 
@@ -1610,25 +1760,27 @@ export async function bulkImportParticipantsToExam(
     const existingSnap = await getDocs(collection(db, 'exams', examId, 'sessions'));
     const existingSet = new Set(existingSnap.docs.map((d) => d.id.toUpperCase()));
 
-    const uniqueNew: Array<{ nis: string; student_name: string; student_class: string }> = [];
+    const uniqueNew: Array<{ nis: string; student_name: string; student_class: string; pin: string }> = [];
     let skipped = 0;
 
     for (const item of items) {
       const nis = normalizeNis(item.nis);
       const name = clampStr(item.student_name, 100);
       const cls = clampStr(item.student_class, 40);
+      const rawPin = item.pin ? normalizePin(item.pin) : '';
+      const pin = rawPin.length >= 4 ? rawPin : generateStudentPin();
       if (!nis || !name || !cls) continue;
       if (existingSet.has(nis)) {
         skipped += 1;
         continue;
       }
       existingSet.add(nis);
-      uniqueNew.push({ nis, student_name: name, student_class: cls });
+      uniqueNew.push({ nis, student_name: name, student_class: cls, pin });
     }
 
-    for (let i = 0; i < uniqueNew.length; i += 200) {
+    for (let i = 0; i < uniqueNew.length; i += 150) {
       const batch = writeBatch(db);
-      uniqueNew.slice(i, i + 200).forEach((p) => {
+      uniqueNew.slice(i, i + 150).forEach((p) => {
         batch.set(doc(db, 'exams', examId, 'sessions', p.nis), {
           exam_id: examId,
           nis: p.nis,
@@ -1655,6 +1807,10 @@ export async function bulkImportParticipantsToExam(
           created_at: serverTimestamp(),
           updated_at: serverTimestamp(),
         });
+        batch.set(doc(db, 'exams', examId, 'participant_pins', p.nis), {
+          pin: p.pin,
+          updated_at: serverTimestamp(),
+        });
       });
       await batch.commit();
     }
@@ -1663,6 +1819,32 @@ export async function bulkImportParticipantsToExam(
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `exams/${examId}/sessions`);
   }
+}
+
+export function buildParticipantCardsCsv(
+  participants: MonitorParticipant[],
+  pins: Record<string, string>,
+  examToken: string
+): string {
+  const esc = (v: unknown) => {
+    const s = String(v ?? '');
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  };
+  const header = ['Token Ujian', 'NIS / Nomor Ujian', 'Nama Siswa', 'Kelas', 'PIN Peserta', 'Status'].join(',');
+  const lines = participants.map((p) =>
+    [
+      esc(examToken),
+      esc(p.nis),
+      esc(p.student_name),
+      esc(p.student_class),
+      esc(pins[p.nis] || '-'),
+      esc(p.status),
+    ].join(',')
+  );
+  return '\uFEFF' + [header, ...lines].join('\r\n');
 }
 
 export function buildParticipantsCsv(participants: MonitorParticipant[]): string {

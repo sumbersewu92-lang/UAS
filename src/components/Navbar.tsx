@@ -8,6 +8,7 @@ interface NavbarProps {
   onOpenGuide: () => void;
   isTeacherLoggedIn: boolean;
   onTeacherLogout: () => void;
+  kioskMode?: boolean;
 }
 
 export function Navbar({
@@ -16,7 +17,23 @@ export function Navbar({
   onOpenGuide,
   isTeacherLoggedIn,
   onTeacherLogout,
+  kioskMode = false,
 }: NavbarProps) {
+  if (kioskMode) {
+    return (
+      <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+          <span className="text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0">
+            UjianKu
+          </span>
+          <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg whitespace-nowrap">
+            Portal Peserta Ujian
+          </span>
+        </div>
+      </header>
+    );
+  }
+
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4 sm:gap-8">

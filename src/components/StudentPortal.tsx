@@ -12,6 +12,7 @@ import { getOrCreateDeviceId } from '../utils/storage';
 
 interface StudentPortalProps {
   initialToken: string;
+  kioskMode?: boolean;
   authReady: boolean;
   authUser: User | null;
   onExamJoined: (data: ExamJoinResponse) => void;
@@ -28,6 +29,7 @@ function getAnonymousAuthErrorMessage(err: unknown): string | null {
 
 export function StudentPortal({
   initialToken,
+  kioskMode = false,
   authReady,
   authUser,
   onExamJoined,
@@ -35,8 +37,7 @@ export function StudentPortal({
 }: StudentPortalProps) {
   const [token, setToken] = useState(initialToken.toUpperCase());
   const [nis, setNis] = useState('');
-  const [studentName, setStudentName] = useState('');
-  const [studentClass, setStudentClass] = useState('');
+  const [pin, setPin] = useState('');
 
   const [examPreview, setExamPreview] = useState<LookupExamPreview | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -118,8 +119,7 @@ export function StudentPortal({
       const deviceId = getOrCreateDeviceId();
       const result = await joinExamSession({
         nis: nis.trim(),
-        studentName: studentName.trim(),
-        studentClass: studentClass.trim(),
+        pin: pin.trim().toUpperCase(),
         token: token.trim().toUpperCase(),
         deviceId,
       });
@@ -152,8 +152,7 @@ export function StudentPortal({
   function fillSampleStudent() {
     setToken('PASMTK26');
     setNis('20260103');
-    setStudentName('Bagas Pratama');
-    setStudentClass('XI IPA 1');
+    setPin('123456');
     setErrorMsg(null);
     setCompletedSummary(null);
   }
@@ -168,61 +167,102 @@ export function StudentPortal({
               Masuk Ruang Ujian Semester
             </h1>
             <p className="text-sm text-slate-600 mt-1.5">
-              Masukkan token aktif dan Nomor Ujian / NIS yang sudah didaftarkan oleh guru pengawas.
+              {kioskMode && initialToken
+                ? 'Masukkan Nomor Ujian / NIS dan PIN pribadi dari kartu peserta Anda untuk memulai.'
+                : 'Masukkan token aktif, Nomor Ujian / NIS, dan PIN pribadi dari kartu peserta Anda.'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="exam-token" className="block text-sm font-semibold text-slate-800">
-                  Token Ujian
-                </label>
-                <button
-                  type="button"
-                  onClick={fillSampleStudent}
-                  className="text-xs font-medium text-blue-700 hover:text-blue-800 underline underline-offset-2"
-                >
-                  Isi Data Contoh
-                </button>
-              </div>
-              <input
-                id="exam-token"
-                type="text"
-                required
-                autoComplete="off"
-                value={token}
-                onChange={(e) => setToken(e.target.value.toUpperCase())}
-                placeholder="Contoh: PASMTK26"
-                className="w-full min-h-[46px] px-3.5 py-2.5 text-base font-mono uppercase tracking-wider bg-white border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700"
-              />
+            {kioskMode && initialToken ? (
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-600">Paket Ujian Terpilih</span>
+                  <span className="text-xs font-mono font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-lg tracking-wider">
+                    Token: {token}
+                  </span>
+                </div>
 
-              {isCheckingToken && (
-                <p className="mt-1.5 text-xs text-slate-500">Memeriksa token ujian ke database cloud...</p>
-              )}
+                {isCheckingToken && (
+                  <p className="text-xs text-slate-500">Memuat informasi paket ujian...</p>
+                )}
 
-              {examPreview && (
-                <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-start gap-2.5">
+                {examPreview && (
+                  <div className="flex items-start gap-2.5 pt-0.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 leading-snug">
+                      <p className="text-sm font-bold text-slate-900 leading-snug">
                         {examPreview.title}
                       </p>
                       <p className="text-xs text-slate-600 mt-0.5 tabular-nums">
                         {examPreview.class_level} · {examPreview.duration_minutes} Menit ·{' '}
                         {examPreview.question_count} Soal ·{' '}
-                        {examPreview.is_active ? 'Token Aktif' : 'Token Nonaktif'}
+                        <span className={examPreview.is_active ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold'}>
+                          {examPreview.is_active ? 'Token Aktif' : 'Token Nonaktif'}
+                        </span>
                       </p>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {lookupError && token.trim().length >= 4 && (
-                <p className="mt-1.5 text-xs font-medium text-red-600">{lookupError}</p>
-              )}
-            </div>
+                {lookupError && (
+                  <p className="text-xs font-medium text-red-600">{lookupError}</p>
+                )}
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="exam-token" className="block text-sm font-semibold text-slate-800">
+                    Token Ujian
+                  </label>
+                  {!kioskMode && (
+                    <button
+                      type="button"
+                      onClick={fillSampleStudent}
+                      className="text-xs font-medium text-blue-700 hover:text-blue-800 underline underline-offset-2"
+                    >
+                      Isi Data Contoh
+                    </button>
+                  )}
+                </div>
+                <input
+                  id="exam-token"
+                  type="text"
+                  required
+                  autoComplete="off"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value.toUpperCase())}
+                  placeholder="Contoh: PASMTK26"
+                  className="w-full min-h-[46px] px-3.5 py-2.5 text-base font-mono uppercase tracking-wider bg-white border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700"
+                />
+
+                {isCheckingToken && (
+                  <p className="mt-1.5 text-xs text-slate-500">Memeriksa token ujian ke database cloud...</p>
+                )}
+
+                {examPreview && (
+                  <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="flex items-start gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900 leading-snug">
+                          {examPreview.title}
+                        </p>
+                        <p className="text-xs text-slate-600 mt-0.5 tabular-nums">
+                          {examPreview.class_level} · {examPreview.duration_minutes} Menit ·{' '}
+                          {examPreview.question_count} Soal ·{' '}
+                          {examPreview.is_active ? 'Token Aktif' : 'Token Nonaktif'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {lookupError && token.trim().length >= 4 && (
+                  <p className="mt-1.5 text-xs font-medium text-red-600">{lookupError}</p>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -242,34 +282,21 @@ export function StudentPortal({
               </div>
 
               <div>
-                <label htmlFor="student-class" className="block text-sm font-semibold text-slate-800 mb-1.5">
-                  Kelas
+                <label htmlFor="student-pin" className="block text-sm font-semibold text-slate-800 mb-1.5">
+                  PIN Peserta
                 </label>
                 <input
-                  id="student-class"
+                  id="student-pin"
                   type="text"
                   required
-                  value={studentClass}
-                  onChange={(e) => setStudentClass(e.target.value)}
-                  placeholder="Contoh: XI IPA 1"
-                  className="w-full min-h-[46px] px-3.5 py-2.5 text-base bg-white border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700"
+                  autoComplete="off"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.toUpperCase())}
+                  placeholder="Contoh: 123456"
+                  className="w-full min-h-[46px] px-3.5 py-2.5 text-base font-mono uppercase tracking-wider bg-white border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700"
                 />
+                <p className="mt-1 text-xs text-slate-500">Diberikan oleh guru pada kartu peserta.</p>
               </div>
-            </div>
-
-            <div>
-              <label htmlFor="student-name" className="block text-sm font-semibold text-slate-800 mb-1.5">
-                Nama Lengkap Siswa
-              </label>
-              <input
-                id="student-name"
-                type="text"
-                required
-                value={studentName}
-                onChange={(e) => setStudentName(e.target.value)}
-                placeholder="Masukkan nama lengkap sesuai absensi"
-                className="w-full min-h-[46px] px-3.5 py-2.5 text-base bg-white border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:border-blue-700"
-              />
             </div>
 
             {errorMsg && (
@@ -355,38 +382,40 @@ export function StudentPortal({
             </ul>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6">
-            <h3 className="text-sm font-bold text-slate-900 mb-2">Token Uji Coba Tersedia</h3>
-            <div className="space-y-2 text-xs text-slate-600">
-              <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                <span>Matematika Wajib (8 soal · 45 menit)</span>
-                <button
-                  type="button"
-                  onClick={() => setToken('PASMTK26')}
-                  className="font-mono font-semibold text-blue-700 hover:underline"
-                >
-                  PASMTK26
-                </button>
+          {!kioskMode && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6">
+              <h3 className="text-sm font-bold text-slate-900 mb-2">Token Uji Coba Tersedia</h3>
+              <div className="space-y-2 text-xs text-slate-600">
+                <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                  <span>Matematika Wajib (8 soal · 45 menit)</span>
+                  <button
+                    type="button"
+                    onClick={() => setToken('PASMTK26')}
+                    className="font-mono font-semibold text-blue-700 hover:underline"
+                  >
+                    PASMTK26
+                  </button>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <span>Bahasa Indonesia (5 soal · 40 menit)</span>
+                  <button
+                    type="button"
+                    onClick={() => setToken('PASBIN26')}
+                    className="font-mono font-semibold text-blue-700 hover:underline"
+                  >
+                    PASBIN26
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center justify-between py-2">
-                <span>Bahasa Indonesia (5 soal · 40 menit)</span>
-                <button
-                  type="button"
-                  onClick={() => setToken('PASBIN26')}
-                  className="font-mono font-semibold text-blue-700 hover:underline"
-                >
-                  PASBIN26
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={onOpenGuide}
+                className="mt-3 text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2 sm:hidden"
+              >
+                Baca Panduan Lengkap
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={onOpenGuide}
-              className="mt-3 text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2 sm:hidden"
-            >
-              Baca Panduan Lengkap
-            </button>
-          </div>
+          )}
         </aside>
       </div>
     </main>

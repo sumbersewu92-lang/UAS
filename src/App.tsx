@@ -11,8 +11,17 @@ import type { ExamJoinResponse } from './types';
 import { checkIsTeacher, ensureSeedDataIfEmpty } from './utils/firestoreService';
 
 export default function App() {
+  const [initialUrlParams] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenParam = params.get('token')?.trim().toUpperCase() || '';
+    const modeParam = params.get('mode')?.trim().toLowerCase() || '';
+    const isKiosk = Boolean(tokenParam) || modeParam === 'peserta' || modeParam === 'siswa';
+    return { tokenParam, isKiosk };
+  });
+
   const [activeView, setActiveView] = useState<AppView>('student');
-  const [initialToken, setInitialToken] = useState<string>('');
+  const [initialToken] = useState<string>(initialUrlParams.tokenParam);
+  const [studentKioskMode] = useState<boolean>(initialUrlParams.isKiosk);
   const [activeExamSession, setActiveExamSession] = useState<ExamJoinResponse | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
@@ -20,15 +29,6 @@ export default function App() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [isTeacherUser, setIsTeacherUser] = useState(false);
   const [checkingRole, setCheckingRole] = useState(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tokenParam = params.get('token');
-    if (tokenParam) {
-      setInitialToken(tokenParam.trim().toUpperCase());
-      setActiveView('student');
-    }
-  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -75,16 +75,21 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       <Navbar
         activeView={activeView}
-        onNavigate={setActiveView}
+        onNavigate={(view) => {
+          if (studentKioskMode) return;
+          setActiveView(view);
+        }}
         onOpenGuide={() => setGuideOpen(true)}
         isTeacherLoggedIn={Boolean(authUser && isTeacherUser)}
         onTeacherLogout={() => void signOutGoogle()}
+        kioskMode={studentKioskMode}
       />
 
       <div className="flex-1">
-        {activeView === 'student' ? (
+        {studentKioskMode || activeView === 'student' ? (
           <StudentPortal
             initialToken={initialToken}
+            kioskMode={studentKioskMode}
             authReady={authReady}
             authUser={authUser}
             onExamJoined={(data) => setActiveExamSession(data)}
