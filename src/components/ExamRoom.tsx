@@ -506,7 +506,7 @@ export function ExamRoom({ initialData, onExitToPortal }: ExamRoomProps) {
             onClick={onExitToPortal}
             className="w-full min-h-[46px] px-4 py-2.5 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-xl transition-colors"
           >
-            Kembali ke Portal Utama
+            Selesai Ujian
           </button>
         </div>
       </main>

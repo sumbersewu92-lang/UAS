@@ -1,5 +1,5 @@
 import type { User } from 'firebase/auth';
-import { AlertCircle, CheckCircle2, Clock, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ClipboardList, ShieldCheck } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ensureStudentAuthSession } from '../firebase';
 import type { ExamJoinResponse, ExamResultSummary } from '../types';
@@ -16,7 +16,6 @@ interface StudentPortalProps {
   authReady: boolean;
   authUser: User | null;
   onExamJoined: (data: ExamJoinResponse) => void;
-  onOpenGuide: () => void;
 }
 
 function getAnonymousAuthErrorMessage(err: unknown): string | null {
@@ -33,7 +32,6 @@ export function StudentPortal({
   authReady,
   authUser,
   onExamJoined,
-  onOpenGuide,
 }: StudentPortalProps) {
   const [token, setToken] = useState(initialToken.toUpperCase());
   const [nis, setNis] = useState('');
@@ -353,69 +351,75 @@ export function StudentPortal({
           </form>
         </section>
 
-        <aside className="lg:col-span-5 space-y-5">
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4">
-            <h2 className="text-base font-bold text-slate-900">Tata Tertib &amp; Ketentuan Teknis</h2>
-            <ul className="space-y-3 text-sm text-slate-600">
-              <li className="flex items-start gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-slate-900">Layar Penuh &amp; Anti-Pindah Tab:</strong> Tetap di halaman ujian.
-                  Berpindah aplikasi, membuka tab baru, atau keluar dari layar penuh dicatat ke database cloud dan dapat
-                  mengunci sesi Anda.
-                </span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <Clock className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-slate-900">Auto-Save Ganda (HP + Cloud):</strong> Setiap jawaban disimpan
-                  di memori HP dan disinkronkan ke Firestore. Saat sinyal lemah, jawaban tetap aman di HP Anda.
-                </span>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <Sparkles className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-slate-900">Satu Perangkat Aktif:</strong> Nomor Ujian/NIS yang sama tidak
-                  dapat dibuka bersamaan di dua HP berbeda.
-                </span>
-              </li>
-            </ul>
-          </div>
+        <aside className="lg:col-span-5">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-5">
+            <h2 className="text-base font-bold text-slate-900">
+              Tata Tertib Ujian &amp; Tutorial Singkat
+            </h2>
 
-          {!kioskMode && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6">
-              <h3 className="text-sm font-bold text-slate-900 mb-2">Token Uji Coba Tersedia</h3>
-              <div className="space-y-2 text-xs text-slate-600">
-                <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                  <span>Matematika Wajib (8 soal · 45 menit)</span>
-                  <button
-                    type="button"
-                    onClick={() => setToken('PASMTK26')}
-                    className="font-mono font-semibold text-blue-700 hover:underline"
-                  >
-                    PASMTK26
-                  </button>
-                </div>
-                <div className="flex items-center justify-between py-2">
-                  <span>Bahasa Indonesia (5 soal · 40 menit)</span>
-                  <button
-                    type="button"
-                    onClick={() => setToken('PASBIN26')}
-                    className="font-mono font-semibold text-blue-700 hover:underline"
-                  >
-                    PASBIN26
-                  </button>
-                </div>
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0" />
+                <h3>Tata Tertib Ujian</h3>
               </div>
-              <button
-                type="button"
-                onClick={onOpenGuide}
-                className="mt-3 text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2 sm:hidden"
-              >
-                Baca Panduan Lengkap
-              </button>
+              <ul className="list-disc pl-5 space-y-2 text-sm text-slate-600 leading-relaxed">
+                <li>Kerjakan ujian secara jujur dan mandiri menggunakan perangkat sendiri.</li>
+                <li>
+                  Dilarang berpindah tab/aplikasi, membuka mesin pencari/AI, atau keluar dari layar penuh selama
+                  ujian; pelanggaran terekam otomatis pada sistem dan dapat mengunci sesi hingga dibuka oleh
+                  guru/pengawas.
+                </li>
+                <li>
+                  Gunakan satu perangkat aktif untuk satu Nomor Ujian/NIS, dan jaga ketertiban selama berada di ruang
+                  ujian.
+                </li>
+              </ul>
             </div>
-          )}
+
+            <div className="border-t border-slate-100 pt-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <ClipboardList className="w-4 h-4 text-blue-700 shrink-0" />
+                <h3>Tutorial Singkat Mengerjakan Ujian</h3>
+              </div>
+              <ol className="space-y-2.5 text-sm text-slate-600 leading-relaxed">
+                <li className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    1
+                  </span>
+                  <span>
+                    Masukkan <strong className="text-slate-900">Token Ujian</strong> aktif,{' '}
+                    <strong className="text-slate-900">Nomor Ujian / NIS</strong>, dan{' '}
+                    <strong className="text-slate-900">PIN Peserta</strong> sesuai kartu peserta
+                    {!kioskMode && (
+                      <>
+                        {' '}
+                        (atau klik <em>Isi Data Contoh</em> bila sedang mode uji coba)
+                      </>
+                    )}
+                    .
+                  </span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    2
+                  </span>
+                  <span>
+                    Klik <strong className="text-slate-900">Mulai / Lanjutkan Ujian</strong>, lalu izinkan mode layar
+                    penuh jika diminta dan kerjakan soal sebelum waktu habis.
+                  </span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 font-mono text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                    3
+                  </span>
+                  <span>
+                    Setiap jawaban tersimpan otomatis (<em>auto-save</em> di HP dan tersinkron ke database saat
+                    jaringan tersedia); periksa kembali jawaban lalu tekan tombol selesai/kirim sebelum keluar.
+                  </span>
+                </li>
+              </ol>
+            </div>
+          </div>
         </aside>
       </div>
     </main>

@@ -93,7 +93,6 @@ export default function App() {
             authReady={authReady}
             authUser={authUser}
             onExamJoined={(data) => setActiveExamSession(data)}
-            onOpenGuide={() => setGuideOpen(true)}
           />
         ) : authReady && authUser && isTeacherUser ? (
           <TeacherDashboard authReady={authReady} authUser={authUser} />
